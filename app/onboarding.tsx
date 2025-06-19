@@ -82,8 +82,8 @@ const OnboardingScreen = () => {
     setCurrentSlideIndex(lastSlideIndex);
   };
 
-  const navigateToHome = () => {
-    router.replace('/(tabs)');
+  const navigateToAuth = () => {
+    router.push('/(auth)');
   };
 
   const Footer = () => {
@@ -109,7 +109,7 @@ const OnboardingScreen = () => {
             <View style={tw`h-12`}>
               <TouchableOpacity
                 style={tw`flex-1 h-12 rounded bg-white justify-center items-center`}
-                onPress={navigateToHome}>
+                onPress={navigateToAuth}>
                 <Text style={tw`font-bold text-base`}>
                   GET STARTED
                 </Text>
