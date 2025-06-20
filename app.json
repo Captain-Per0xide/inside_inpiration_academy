@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "inside_inpiration_academy",
+    "name": "Inside Inspiration Academy",
     "slug": "inside_inpiration_academy",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/splash-icon-dark.png",
     "scheme": "insideinpirationacademy",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true

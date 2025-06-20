@@ -42,7 +42,7 @@ const slides = [
 
 const Slide = ({item}: {item: typeof slides[0]}) => {
   return (
-    <View style={[tw`items-center h-full justify-between py-6`, {height: height * 0.75}]}>
+    <View style={[tw`items-center h-full justify-between pt-20`, {height: height * 0.75}]}>
       <Image
         source={item?.image}
         style={[{height: '60%', width, resizeMode: 'contain'}]}

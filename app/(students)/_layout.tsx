@@ -5,16 +5,90 @@ import HomeIcon from "@/components/icons/HomeIcon";
 import PaymentIcon from "@/components/icons/PaymentIcon";
 import PerformanceIcon from "@/components/icons/Performance";
 import TestSeriesIcon from "@/components/icons/TestSeriesIcon";
+import { supabase } from "@/lib/supabase";
+import { authService } from "@/services/authService";
 import { DrawerContentComponentProps, DrawerContentScrollView, DrawerItemList } from "@react-navigation/drawer";
+import { router } from "expo-router";
 import { Drawer } from "expo-router/drawer";
-import { Image, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Alert, Image, Text, TouchableOpacity, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+
+interface UserData {
+  id?: string;
+  email?: string;
+  name?: string;
+  user_image?: string | null;
+}
 function CustomDrawerContent(props: DrawerContentComponentProps) {
+  const [userData, setUserData] = useState<UserData>({});
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const id = await authService.getCurrentUserUID();
+      const email = await authService.getCurrentUserEmail();
+
+      if (!id || !email) return;
+
+      console.log('Fetching user data for drawer, ID:', id);
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, email, name, user_image')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Drawer fetch error:', error);
+        return;
+      }
+
+      if (data) {
+        setUserData(data);
+      } else {
+        // If no user data exists in database, use current auth info
+        setUserData({ id, email, name: 'User' });
+      }
+    } catch (error) {
+      console.error('Error fetching user data for drawer:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.auth.signOut();
+              if (error) throw error;
+              router.replace('/(auth)');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to logout');
+              console.error('Logout error:', error);
+            }
+          },
+        },
+      ]
+    );
+  };
   return (
-    <DrawerContentScrollView {...props}>
+    <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1 }}>
       <View style={{ padding: 20, alignItems: 'center' }}>
         <Image
-          source={require('@/assets/images/logo.png')}
+          source={require('../../assets/images/logo.png')}
           style={{ width: 100, height: 100, marginBottom: 10 }}
         />
         <View>
@@ -22,7 +96,86 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
         </View>
       </View>
       <View style={{ height: 40 }} />
-      <DrawerItemList {...props} />
+
+      <View style={{ flex: 1 }}>
+        <DrawerItemList {...props} />
+      </View>
+
+      <View style={{
+        padding: 20,
+        borderTopWidth: 1,
+        borderTopColor: '#ddd',
+        backgroundColor: '#f9f9f9'
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+          {userData.user_image ? (
+            <Image
+              source={{ uri: userData.user_image }}
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: 25,
+                marginRight: 15,
+                backgroundColor: '#e0e0e0'
+              }}
+            />
+          ) : (
+            <View style={{
+              width: 50,
+              height: 50,
+              borderRadius: 25,
+              backgroundColor: '#FCCC42',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginRight: 15
+            }}>
+              <Text style={{
+                fontSize: 20,
+                fontWeight: 'bold',
+                color: '#333'
+              }}>
+                {userData.name && userData.name.length > 0 ? userData.name.charAt(0).toUpperCase() : 'U'}
+              </Text>
+            </View>
+          )}
+
+          <View style={{ flex: 1 }}>
+            <Text style={{
+              fontSize: 16,
+              fontWeight: 'bold',
+              color: '#333',
+              marginBottom: 2
+            }}>
+              {userData.name ? userData.name : 'User'}
+            </Text>
+            <Text style={{
+              fontSize: 14,
+              color: '#666'
+            }} numberOfLines={1}>
+              {userData.email ? userData.email : 'No email'}
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={{
+            backgroundColor: '#ff4444',
+            paddingVertical: 12,
+            paddingHorizontal: 20,
+            borderRadius: 8,
+            alignItems: 'center'
+          }}
+          onPress={handleLogout}
+        >
+          <Text style={{
+            color: 'white',
+            fontSize: 16,
+            fontWeight: 'bold'
+          }}>
+            Logout
+          </Text>
+        </TouchableOpacity>
+      </View>
     </DrawerContentScrollView>
   );
 }
@@ -34,22 +187,69 @@ export default function StudentsLayout() {
         screenOptions={{
           headerShown: true,
           drawerStyle: {
-        backgroundColor: '#f4f4f4',
-        width: '75%', // Use 75% of the screen width
+            backgroundColor: '#f4f4f4',
+            width: '75%',
           },
           drawerActiveTintColor: '#FCCC42',
           drawerInactiveTintColor: '#333',
-          drawerLabelStyle: {
-        fontSize: 21, // Increase the font size here
-          },
-        }}>
-        <Drawer.Screen name="index" options={{ title: 'Home', drawerLabel: 'Home', drawerIcon: () => <HomeIcon /> }} />
-        <Drawer.Screen name="batches" options={{ title: 'Batches', drawerLabel: 'My Batches', drawerIcon: () => <BatchesIcon /> }} />
-        <Drawer.Screen name="test-series" options={{ title: 'Test Series', drawerLabel: 'Test Series', drawerIcon: () => <TestSeriesIcon /> }} />
-        <Drawer.Screen name="coding-league" options={{ title: 'Coding League', drawerLabel: 'Coding League', drawerIcon: () => <CodingLeagueIcon /> }} />
-        <Drawer.Screen name="attendance" options={{ title: 'Attendance', drawerLabel: 'My Attendance', drawerIcon: () => <AttendanceIcon /> }} />
-        <Drawer.Screen name="performance" options={{ title: 'Performance', drawerLabel: 'My Performance', drawerIcon: () => <PerformanceIcon /> }} />
-        <Drawer.Screen name="payment" options={{ title: 'Payment', drawerLabel: 'Payment', drawerIcon: () => <PaymentIcon /> }} />
+        }}
+      >
+        <Drawer.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            drawerLabel: 'Home',
+            drawerIcon: () => <HomeIcon />
+          }}
+        />
+        <Drawer.Screen
+          name="batches"
+          options={{
+            title: 'Batches',
+            drawerLabel: 'My Batches',
+            drawerIcon: () => <BatchesIcon />
+          }}
+        />
+        <Drawer.Screen
+          name="test-series"
+          options={{
+            title: 'Test Series',
+            drawerLabel: 'Test Series',
+            drawerIcon: () => <TestSeriesIcon />
+          }}
+        />
+        <Drawer.Screen
+          name="coding-league"
+          options={{
+            title: 'Coding League',
+            drawerLabel: 'Coding League',
+            drawerIcon: () => <CodingLeagueIcon />
+          }}
+        />
+        <Drawer.Screen
+          name="attendance"
+          options={{
+            title: 'Attendance',
+            drawerLabel: 'My Attendance',
+            drawerIcon: () => <AttendanceIcon />
+          }}
+        />
+        <Drawer.Screen
+          name="performance"
+          options={{
+            title: 'Performance',
+            drawerLabel: 'My Performance',
+            drawerIcon: () => <PerformanceIcon />
+          }}
+        />
+        <Drawer.Screen
+          name="payment"
+          options={{
+            title: 'Payment',
+            drawerLabel: 'Payment',
+            drawerIcon: () => <PaymentIcon />
+          }}
+        />
       </Drawer>
     </GestureHandlerRootView>
   );
