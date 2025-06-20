@@ -4,9 +4,11 @@ import CodingLeagueIcon from "@/components/icons/CodingLeagueIcon";
 import HomeIcon from "@/components/icons/HomeIcon";
 import PaymentIcon from "@/components/icons/PaymentIcon";
 import PerformanceIcon from "@/components/icons/Performance";
+import SettingsIcon from "@/components/icons/SettingsIcon";
 import TestSeriesIcon from "@/components/icons/TestSeriesIcon";
 import { supabase } from "@/lib/supabase";
 import { authService } from "@/services/authService";
+import { Ionicons } from "@expo/vector-icons";
 import { DrawerContentComponentProps, DrawerContentScrollView, DrawerItemList } from "@react-navigation/drawer";
 import { router } from "expo-router";
 import { Drawer } from "expo-router/drawer";
@@ -155,6 +157,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
               {userData.email ? userData.email : 'No email'}
             </Text>
           </View>
+          <SettingsIcon />
         </View>
 
         <TouchableOpacity
@@ -186,12 +189,25 @@ export default function StudentsLayout() {
         drawerContent={CustomDrawerContent}
         screenOptions={{
           headerShown: true,
+          headerTitle: 'Inside Inspiration Academy',
+          headerTitleAlign: 'center',
           drawerStyle: {
             backgroundColor: '#f4f4f4',
             width: '75%',
           },
           drawerActiveTintColor: '#FCCC42',
           drawerInactiveTintColor: '#333',
+          headerRight: () => (
+            <TouchableOpacity
+              style={{ marginRight: 16 }}
+              onPress={() => {
+                // Handle notification icon press here
+                // For example: router.push('/(students)/notifications');
+              }}
+            >
+              <Ionicons name="notifications-outline" size={20} color="#fff" />
+            </TouchableOpacity>
+          ),
         }}
       >
         <Drawer.Screen
