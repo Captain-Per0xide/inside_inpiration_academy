@@ -33,6 +33,7 @@ interface UserData {
     current_sem?: number | null;
     gender?: string;
     user_image?: string | null;
+    role?: string;
 }
 
 export default function ProfilePage() {
@@ -117,14 +118,14 @@ export default function ProfilePage() {
         } finally {
             setIsLoading(false);
         }
-    };    const uriToBlob = async (uri: string): Promise<ArrayBuffer> => {
+    }; const uriToBlob = async (uri: string): Promise<ArrayBuffer> => {
         const base64 = await FileSystem.readAsStringAsync(uri, {
             encoding: FileSystem.EncodingType.Base64,
         });
 
         // Convert base64 to binary string
         const binaryString = atob(base64);
-        
+
         // Create ArrayBuffer from binary string
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
@@ -168,7 +169,7 @@ export default function ProfilePage() {
                 await supabase.storage
                     .from('inside-inspiration-academy-assets')
                     .remove([path]);
-            }            console.log('Converting image to ArrayBuffer...');
+            } console.log('Converting image to ArrayBuffer...');
             const arrayBuffer = await uriToBlob(pickedImage);
 
             console.log('Uploading new image...');
@@ -220,7 +221,8 @@ export default function ProfilePage() {
         }
 
         return true;
-    }; const submitProfile = async () => {
+    };
+    const submitProfile = async () => {
         if (!validateForm()) return;
 
         setIsLoading(true);
@@ -254,9 +256,7 @@ export default function ProfilePage() {
                     console.warn('Image upload failed, continuing with profile update:', imageError);
                     // Continue with profile update even if image upload fails
                 }
-            }
-
-            const data = {
+            }            const data = {
                 id,
                 email,
                 name: formData.name?.trim(),
@@ -269,6 +269,7 @@ export default function ProfilePage() {
                 current_sem: formData.current_sem ? parseInt(formData.current_sem.toString()) : null,
                 gender: selectedGender,
                 user_image: uploadedImageUrl,
+                role: formData.role, // Include role in the data
             };
 
             console.log('Submitting profile data:', data);
@@ -289,18 +290,22 @@ export default function ProfilePage() {
             setImageUrl(uploadedImageUrl);
             if (pickedImage && imageUploadSuccess) {
                 setPickedImage(null); // Clear picked image since it's been uploaded
-            }
-
-            const successMessage = imageUploadSuccess
+            }            const successMessage = imageUploadSuccess
                 ? 'Profile updated successfully!'
-                : 'Profile updated successfully! (Image upload failed, but your other changes were saved)';
+                : 'Profile updated successfully! (Image upload failed, but your other changes were saved)';            // Determine redirect route based on user role
+            let redirectRoute: any = '/(tabs)'; // default route
+            if (data.role === 'admin') {
+                redirectRoute = '/(admin)';
+            } else if (data.role === 'student') {
+                redirectRoute = '/(students)';
+            }
 
             Alert.alert('Success', successMessage, [
                 {
                     text: 'OK',
                     onPress: () => {
                         setTimeout(() => {
-                            router.replace('/(tabs)');
+                            router.replace(redirectRoute);
                         }, 400);
                     },
                 },
@@ -484,7 +489,7 @@ export default function ProfilePage() {
                         style={styles.picker}
                     >
                         {genderOptions.map((option) => (
-                            <Picker.Item key={option} label={option} value={option} />
+                            <Picker.Item key={option} label={option} value={option} style={{ color: '#fff' , backgroundColor: '#111827'}} />
                         ))}
                     </Picker>
                 </View>
@@ -526,7 +531,7 @@ export default function ProfilePage() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: '#111827',
     },
     contentContainer: {
         padding: 16,
@@ -539,7 +544,7 @@ const styles = StyleSheet.create({
         fontSize: 16,
         textAlign: 'center',
         marginBottom: 16,
-        color: '#333',
+        color: '#fff',
     },
     testButton: {
         backgroundColor: '#28a745',
@@ -582,37 +587,38 @@ const styles = StyleSheet.create({
     },
     input: {
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: '#374151',
         borderRadius: 8,
         paddingHorizontal: 12,
         paddingVertical: 12,
         fontSize: 16,
-        backgroundColor: '#fff',
+        color: '#fff',
+        backgroundColor: '#1F2937',
     },
     dateInput: {
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: '#374151',
         borderRadius: 8,
         paddingHorizontal: 12,
         paddingVertical: 12,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        backgroundColor: '#fff',
+        backgroundColor: '#1F2937',
     },
     dateText: {
         fontSize: 16,
-        color: '#000',
+        color: '#fff',
     },
     placeholderText: {
         fontSize: 16,
-        color: '#999',
+        color: '#E4E4E7',
     },
     pickerContainer: {
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: '#374151',
         borderRadius: 8,
-        backgroundColor: '#fff',
+        backgroundColor: '#111827',
     },
     picker: {
         height: 50,

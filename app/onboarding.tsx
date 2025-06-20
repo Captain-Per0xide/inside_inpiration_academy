@@ -1,14 +1,14 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-    Dimensions,
-    FlatList,
-    Image,
-    SafeAreaView,
-    StatusBar,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  FlatList,
+  Image,
+  SafeAreaView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import tw from 'twrnc';
 
@@ -23,33 +23,33 @@ const slides = [
   {
     id: '1',
     image: onboarding1,
-    title: 'Best Digital Solution',
-    subtitle: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+    title: 'Master the Foundations',
+    subtitle: 'Inside Inspiration Academy emphasizes fundamental computer science for innovation, ensuring solid understanding for future success.',
   },
   {
     id: '2',
     image: onboarding2,
-    title: 'Achieve Your Goals',
-    subtitle: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+    title: 'Innovate with Cutting-Edge Tech',
+    subtitle: 'Explore AI, Machine Learning, Blockchain, and Cloud Computing at Inside Inspiration Academy to become market-ready.',
   },
   {
     id: '3',
     image: onboarding3,
-    title: 'Increase Your Value',
-    subtitle: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
+    title: 'Your Journey to Inspiration Starts Here',
+    subtitle: 'Join Inside Inspiration Academy to blend foundational knowledge with innovation. Access tools, expertise, and inspiration for your career.',
   },
 ];
 
 const Slide = ({item}: {item: typeof slides[0]}) => {
   return (
-    <View style={[tw`items-center h-full justify-between`, {height: height * 0.75}]}>
+    <View style={[tw`items-center h-full justify-between py-6`, {height: height * 0.75}]}>
       <Image
         source={item?.image}
-        style={[tw``, {height: '75%', width, resizeMode: 'contain'}]}
+        style={[{height: '60%', width, resizeMode: 'contain'}]}
       />
-      <View style={tw`items-center px-8`}>
-        <Text style={tw`text-white text-xl font-bold mt-5 text-center`}>{item?.title}</Text>
-        <Text style={tw`text-white text-sm mt-2 text-center leading-6 max-w-xs`}>{item?.subtitle}</Text>
+      <View style={tw`items-center px-8 flex flex-col gap-3`}>
+        <Text style={tw`text-white text-xl font-bold text-center text-2xl`}>{item?.title}</Text>
+        <Text style={tw`text-white text-sm text-center leading-6 max-w-xs`}>{item?.subtitle}</Text>
       </View>
     </View>
   );
@@ -88,7 +88,7 @@ const OnboardingScreen = () => {
 
   const Footer = () => {
     return (
-      <View style={[tw`justify-between px-5`, {height: height * 0.25}]}>
+      <View style={[tw`justify-between px-5`, {height: height * 0.15}]}>
         {/* Indicator container */}
         <View style={tw`flex-row justify-center mt-5`}>
           {/* Render indicator */}
@@ -140,10 +140,9 @@ const OnboardingScreen = () => {
       </View>
     );
   };
-
   return (
-    <SafeAreaView style={tw`flex-1 bg-primary`}>
-      <StatusBar backgroundColor="#282534" />
+    <SafeAreaView style={[tw`flex-1`, {backgroundColor: '#111827'}]}>
+      <StatusBar backgroundColor="#111827" />
       <FlatList
         ref={ref}
         onMomentumScrollEnd={updateCurrentSlideIndex}

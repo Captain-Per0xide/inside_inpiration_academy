@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import tw from 'twrnc';
 import { supabase } from '../../lib/supabase';
+import { HelloWave } from '@/components/HelloWave';
 
 const { width, height } = Dimensions.get('window');
 
@@ -105,7 +106,8 @@ const AuthScreen = () => {
           contentContainerStyle={tw`flex-grow justify-center`}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={tw`px-8 py-12`}>
+          <View style={tw`px-8 py-12 w-full flex justify-center items-center`}>
+            <HelloWave />
             {/* Header */}
             <View style={tw`items-center mb-12`}>
               <Text style={tw`text-white text-3xl font-bold mb-2`}>
@@ -119,8 +121,9 @@ const AuthScreen = () => {
             </View>
 
             {/* Form */}
-            <View style={tw`space-y-6`}>
+            <View style={tw`space-y-6 w-full max-w-md`}>
               {/* Email Input */}
+              
               <View>
                 <Text style={tw`text-white text-sm font-medium mb-2`}>
                   Email Address
