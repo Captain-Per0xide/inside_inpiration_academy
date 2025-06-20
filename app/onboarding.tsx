@@ -35,7 +35,7 @@ const slides = [
   {
     id: '3',
     image: onboarding3,
-    title: 'Your Journey to Inspiration Starts Here',
+    title: 'Your Journey Starts Here',
     subtitle: 'Join Inside Inspiration Academy to blend foundational knowledge with innovation. Access tools, expertise, and inspiration for your career.',
   },
 ];
@@ -47,7 +47,7 @@ const Slide = ({item}: {item: typeof slides[0]}) => {
         source={item?.image}
         style={[{height: '60%', width, resizeMode: 'contain'}]}
       />
-      <View style={tw`items-center px-8 flex flex-col gap-3`}>
+      <View style={tw`w-full items-center px-8 flex flex-col gap-3`}>
         <Text style={tw`text-white text-xl font-bold text-center text-2xl`}>{item?.title}</Text>
         <Text style={tw`text-white text-sm text-center leading-6 max-w-xs`}>{item?.subtitle}</Text>
       </View>
