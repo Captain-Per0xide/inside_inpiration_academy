@@ -27,7 +27,7 @@ const StudentsDashboard = () => {
         try {
             const id = await authService.getCurrentUserUID();
             const email = await authService.getCurrentUserEmail();
-            
+
             if (!id || !email) {
                 setIsLoading(false);
                 return;

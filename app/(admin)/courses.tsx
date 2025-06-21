@@ -3,8 +3,7 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import AddCoursesModal from './add-courses';
 
-
-const AdminHome = () => {
+const Courses = () => {
     const [modalVisible, setModalVisible] = useState(false);
 
 
@@ -12,7 +11,7 @@ const AdminHome = () => {
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Welcome to Admin Dashboard</Text>
+            <Text style={styles.title}>Welcome to Course Management Section</Text>
                         
             <TouchableOpacity
                 style={styles.fab}
@@ -100,4 +99,5 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
     },
 });
-export default AdminHome;
+
+export default Courses;
