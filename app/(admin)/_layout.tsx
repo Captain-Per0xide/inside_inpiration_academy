@@ -1,6 +1,7 @@
 import CodingLeagueIcon from "@/components/icons/CodingLeagueIcon";
 import CourseIcon from "@/components/icons/CourseIcon";
 import HomeIcon from "@/components/icons/HomeIcon";
+import LiveIcon from "@/components/icons/LiveIcon";
 import PaymentIcon from "@/components/icons/PaymentIcon";
 import PerformanceIcon from "@/components/icons/Performance";
 import RoutineIcon from "@/components/icons/RoutineIcon";
@@ -89,14 +90,14 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
     );
   };
   return (
-    <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1 }}>
+    <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1, backgroundColor: '#29395A' }}>
       <View style={{ padding: 20, alignItems: 'center' }}>
         <Image
           source={require('../../assets/images/logo.png')}
-          style={{ width: 100, height: 100, marginBottom: 10 }}
+          style={{ width: 100, height: 100, marginBottom: 10, backgroundColor: '#fff', borderRadius: 50 }}
         />
         <View>
-          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#333' }}>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
             Inside Inspiration Academy
           </Text>
         </View>
@@ -104,84 +105,92 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
       <View style={{ height: 40 }} />
 
       <View style={{ flex: 1 }}>
-        <DrawerItemList {...props} />
-      </View>
-
-      <View style={{
-        padding: 20,
-        borderTopWidth: 1,
-        borderTopColor: '#ddd',
-        backgroundColor: '#f9f9f9'
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
-          {userData.user_image ? (
-            <Image
-              source={{ uri: userData.user_image }}
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                marginRight: 15,
-                backgroundColor: '#e0e0e0'
-              }}
-            />
-          ) : (
-            <View style={{
-              width: 50,
-              height: 50,
-              borderRadius: 25,
-              backgroundColor: '#FCCC42',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginRight: 15
-            }}>
-              <Text style={{
-                fontSize: 20,
-                fontWeight: 'bold',
-                color: '#333'
-              }}>
-                {(userData.name && userData.name.length > 0) ? userData.name.charAt(0).toUpperCase() : 'U'}
-              </Text>
-            </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={{
-              fontSize: 16,
-              fontWeight: 'bold',
-              color: '#333',
-              marginBottom: 2
-            }}>
-              {userData.name || 'User'}
-            </Text>
-            <Text style={{
-              fontSize: 14,
-              color: '#666'
-            }} numberOfLines={1}>
-              {userData.email || 'No email'}
-            </Text>
-          </View>
-          <SettingsIcon />
-        </View>
-
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#ff4444',
-            paddingVertical: 12,
-            paddingHorizontal: 20,
-            borderRadius: 8,
-            alignItems: 'center'
-          }}
-          onPress={handleLogout}
+        <DrawerContentScrollView
+          {...props}
+          contentContainerStyle={{ paddingTop: 0, flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={{
-            color: 'white',
-            fontSize: 16,
-            fontWeight: 'bold'
+          <DrawerItemList {...props} />
+          <View style={{ height: 40 }} />
+          <View style={{
+            padding: 20,
+            borderTopWidth: 1,
+            backgroundColor: '#111827',
+            borderRadius: 8
           }}>
-            Logout
-          </Text>
-        </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+              {userData.user_image ? (
+                <Image
+                  source={{ uri: userData.user_image }}
+                  style={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 25,
+                    marginRight: 15,
+                    backgroundColor: '#e0e0e0'
+                  }}
+                />
+              ) : (
+                <View style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 25,
+                  backgroundColor: '#FCCC42',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginRight: 15
+                }}>
+                  <Text style={{
+                    fontSize: 20,
+                    fontWeight: 'bold',
+                    color: '#fff'
+                  }}>
+                    {(userData.name && userData.name.length > 0) ? userData.name.charAt(0).toUpperCase() : 'U'}
+                  </Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  marginBottom: 2
+                }}>
+                  {userData.name || 'User'}
+                </Text>
+                <Text style={{
+                  fontSize: 14,
+                  color: '#fefefefe'
+                }} numberOfLines={1}>
+                  {userData.email || 'No email'}
+                </Text>
+              </View>
+              <SettingsIcon stroke="#fff" />
+            </View>
+
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#ff4444',
+                paddingVertical: 12,
+                paddingHorizontal: 20,
+                borderRadius: 8,
+                alignItems: 'center'
+              }}
+              onPress={handleLogout}
+            >
+              <Text style={{
+                color: 'white',
+                fontSize: 16,
+                fontWeight: 'bold'
+              }}>
+                Logout
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </DrawerContentScrollView>
       </View>
+
+
     </DrawerContentScrollView>
   );
 }
@@ -200,7 +209,7 @@ export default function AdminLayout() {
             width: '75%',
           },
           drawerActiveTintColor: '#FCCC42',
-          drawerInactiveTintColor: '#333',
+          drawerInactiveTintColor: '#fff',
           headerRight: () => (
             <TouchableOpacity
               style={{ marginRight: 16 }}
@@ -219,7 +228,7 @@ export default function AdminLayout() {
           options={{
             title: 'Home',
             drawerLabel: 'Home',
-            drawerIcon: () => <HomeIcon />
+            drawerIcon: () => <HomeIcon stroke="#fff" />
           }}
         />
         <Drawer.Screen
@@ -227,15 +236,23 @@ export default function AdminLayout() {
           options={{
             title: 'Manage Courses',
             drawerLabel: 'Manage Courses',
-            drawerIcon: () => <CourseIcon />
+            drawerIcon: () => <CourseIcon stroke="#fff" />
+          }}
+        />
+        <Drawer.Screen
+          name="routine"
+          options={{
+            title: 'Routine Management',
+            drawerLabel: 'Routine Management',
+            drawerIcon: () => <RoutineIcon stroke="#fff" />
           }}
         />
         <Drawer.Screen
           name="liveclass"
           options={{
-            title: 'Routine Management',
-            drawerLabel: 'Routine Management',
-            drawerIcon: () => <RoutineIcon />
+            title: 'Live Classes Management',
+            drawerLabel: 'Live Classes Management',
+            drawerIcon: () => <LiveIcon stroke="#fff" />
           }}
         />
         <Drawer.Screen
@@ -243,7 +260,7 @@ export default function AdminLayout() {
           options={{
             title: 'Manage Teachers',
             drawerLabel: 'Manage Teachers',
-            drawerIcon: () => <TeacherIcon />
+            drawerIcon: () => <TeacherIcon fill="#fff" />
           }}
         />
         <Drawer.Screen
@@ -251,7 +268,7 @@ export default function AdminLayout() {
           options={{
             title: 'Manage Students',
             drawerLabel: 'Manage Students',
-            drawerIcon: () => <StudentsIcon />
+            drawerIcon: () => <StudentsIcon fill="white" />
           }}
         />
         <Drawer.Screen
@@ -259,7 +276,7 @@ export default function AdminLayout() {
           options={{
             title: 'Test Management',
             drawerLabel: 'Test Management',
-            drawerIcon: () => <TestSeriesIcon />
+            drawerIcon: () => <TestSeriesIcon stroke="white" />
           }}
         />
         <Drawer.Screen
@@ -267,7 +284,7 @@ export default function AdminLayout() {
           options={{
             title: 'Coding League',
             drawerLabel: 'Coding League',
-            drawerIcon: () => <CodingLeagueIcon />
+            drawerIcon: () => <CodingLeagueIcon stroke="white" />
           }}
         />
         <Drawer.Screen
@@ -275,7 +292,7 @@ export default function AdminLayout() {
           options={{
             title: 'Result Management',
             drawerLabel: 'Result Management',
-            drawerIcon: () => <PerformanceIcon />
+            drawerIcon: () => <PerformanceIcon fill="white" />
           }}
         />
         <Drawer.Screen
@@ -283,7 +300,7 @@ export default function AdminLayout() {
           options={{
             title: 'Payment',
             drawerLabel: 'Payment',
-            drawerIcon: () => <PaymentIcon />
+            drawerIcon: () => <PaymentIcon stroke="white" />
           }}
         />
       </Drawer>

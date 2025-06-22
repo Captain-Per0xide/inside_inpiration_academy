@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import AddCoursesModal from './add-courses';
+import AddCoursesModal from '@/components/add-courses';
 
 const Courses = () => {
     const [modalVisible, setModalVisible] = useState(false);

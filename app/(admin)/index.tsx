@@ -1,11 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import AddCoursesModal from './add-courses';
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 
 
 const AdminHome = () => {
-    const [modalVisible, setModalVisible] = useState(false);
 
 
 
@@ -14,22 +11,7 @@ const AdminHome = () => {
         <View style={styles.container}>
             <Text style={styles.title}>Welcome to Admin Dashboard</Text>
                         
-            <TouchableOpacity
-                style={styles.fab}
-                activeOpacity={0.7}
-                onPress={() => setModalVisible(true)}
-            >
-                <Ionicons name="add" size={32} color="#fff" />
-            </TouchableOpacity>
-
-            <AddCoursesModal
-                visible={modalVisible}
-                onClose={() => setModalVisible(false)}
-                onSubmit={(value) => {
-                    console.log('Course added:', value);
-                    // Handle course submission logic here
-                }}
-            />
+            
         </View>
     );
 };
