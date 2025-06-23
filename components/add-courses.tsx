@@ -391,21 +391,39 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({ visible, onClose, onS
                         {/* Course Type */}
                         <View style={styles.sectionGroup}>
                             <Text style={styles.sectionTitle}>Define the type of the course</Text>
-                            <TouchableOpacity
-                                style={[
-                                    styles.typeButton,
-                                    formData.courseType === 'Core Curriculum' && styles.selectedTypeButton
-                                ]}
-                                onPress={() => handleInputChange('courseType', 'Core Curriculum')}
-                            >
-                                <Text style={styles.typeIcon}>🎓</Text>
-                                <Text style={[
-                                    styles.typeText,
-                                    formData.courseType === 'Core Curriculum' && styles.selectedTypeText
-                                ]}>
-                                    Core{'\n'}Curriculum
-                                </Text>
-                            </TouchableOpacity>
+                            <View style={styles.typeOptionsContainer}>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.typeButton,
+                                        formData.courseType === 'Core Curriculum' && styles.selectedTypeButton
+                                    ]}
+                                    onPress={() => handleInputChange('courseType', 'Core Curriculum')}
+                                >
+                                    <Text style={styles.typeIcon}>🎓</Text>
+                                    <Text style={[
+                                        styles.typeText,
+                                        formData.courseType === 'Core Curriculum' && styles.selectedTypeText
+                                    ]}>
+                                        Core{'\n'}Curriculum
+                                    </Text>
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity
+                                    style={[
+                                        styles.typeButton,
+                                        formData.courseType === 'Elective' && styles.selectedTypeButton
+                                    ]}
+                                    onPress={() => handleInputChange('courseType', 'Elective')}
+                                >
+                                    <Text style={styles.typeIcon}>📚</Text>
+                                    <Text style={[
+                                        styles.typeText,
+                                        formData.courseType === 'Elective' && styles.selectedTypeText
+                                    ]}>
+                                        Elective{'\n'}Courses
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
 
                         {/* Instructor */}
@@ -636,7 +654,12 @@ const styles = StyleSheet.create({
         color: '#333',
         marginBottom: 12,
     },
+    typeOptionsContainer: {
+        flexDirection: 'row',
+        gap: 12,
+    },
     typeButton: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: '#f8f8f8',
