@@ -176,6 +176,19 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({ visible, onClose, onS
         field: 'codenameColor' | 'fullNameColor' | null;
     }>({ visible: false, field: null });
 
+    const [showSemesterPicker, setShowSemesterPicker] = useState(false);
+    
+    const semesters = [
+        '1st Semester',
+        '2nd Semester', 
+        '3rd Semester',
+        '4th Semester',
+        '5th Semester',
+        '6th Semester',
+        '7th Semester',
+        '8th Semester'
+    ];
+
     const handleInputChange = (field: keyof CourseFormData, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }));
     };
@@ -436,11 +449,59 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({ visible, onClose, onS
                         </View>
 
                         {/* Semester */}
-                        <View style={styles.sectionGroup}>
+                        <View style={[styles.sectionGroup, styles.dropdownSection]}>
                             <Text style={styles.sectionTitle}>Allocate the course for</Text>
-                            <TouchableOpacity style={styles.semesterButton}>
-                                <Text style={styles.semesterText}>{formData.semester}</Text>
-                            </TouchableOpacity>
+                            <View style={styles.semesterDropdownWrapper}>
+                                <TouchableOpacity 
+                                    style={[
+                                        styles.semesterButton,
+                                        showSemesterPicker && styles.semesterButtonActive
+                                    ]}
+                                    onPress={() => setShowSemesterPicker(!showSemesterPicker)}
+                                >
+                                    <Text style={styles.semesterText}>{formData.semester}</Text>
+                                    <Text style={[
+                                        styles.dropdownArrow,
+                                        showSemesterPicker && styles.dropdownArrowRotated
+                                    ]}>▼</Text>
+                                </TouchableOpacity>
+                                
+                                {showSemesterPicker && (
+                                    <View style={styles.dropdownContainer}>
+                                        <ScrollView
+                                            style={styles.dropdownScrollView}
+                                            showsVerticalScrollIndicator={false}
+                                            nestedScrollEnabled
+                                        >
+                                            {semesters.map((semester, index) => (
+                                                <TouchableOpacity
+                                                    key={index}
+                                                    style={[
+                                                        styles.dropdownItem,
+                                                        formData.semester === semester && styles.selectedDropdownItem,
+                                                        index === semesters.length - 1 && styles.lastDropdownItem
+                                                    ]}
+                                                    onPress={() => {
+                                                        handleInputChange('semester', semester);
+                                                        setShowSemesterPicker(false);
+                                                    }}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <Text style={[
+                                                        styles.dropdownItemText,
+                                                        formData.semester === semester && styles.selectedDropdownItemText
+                                                    ]}>
+                                                        {semester}
+                                                    </Text>
+                                                    {formData.semester === semester && (
+                                                        <Text style={styles.checkmark}>✓</Text>
+                                                    )}
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    </View>
+                                )}
+                            </View>
                         </View>
 
                         {/* Class Schedule */}
@@ -648,11 +709,17 @@ const styles = StyleSheet.create({
     sectionGroup: {
         marginBottom: 20,
     },
+    dropdownSection: {
+        zIndex: 1000,
+    },
     sectionTitle: {
         fontSize: 16,
         fontWeight: '600',
         color: '#333',
         marginBottom: 12,
+    },
+    semesterDropdownWrapper: {
+        position: 'relative',
     },
     typeOptionsContainer: {
         flexDirection: 'row',
@@ -702,15 +769,98 @@ const styles = StyleSheet.create({
         fontWeight: '500',
     },
     semesterButton: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         backgroundColor: '#f8f8f8',
         borderRadius: 15,
         padding: 16,
-        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#e8e8e8',
+    },
+    semesterButtonActive: {
+        borderColor: '#2196f3',
+        backgroundColor: '#f0f8ff',
+        shadowColor: '#2196f3',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 2,
     },
     semesterText: {
         fontSize: 16,
         color: '#333',
         fontWeight: '500',
+    },
+    dropdownArrow: {
+        fontSize: 12,
+        color: '#666',
+        transform: [{ rotate: '0deg' }],
+    },
+    dropdownArrowRotated: {
+        transform: [{ rotate: '180deg' }],
+        color: '#2196f3',
+    },
+    dropdownContainer: {
+        position: 'absolute',
+        top: '100%',
+        left: 0,
+        right: 0,
+        backgroundColor: '#ffffff',
+        borderRadius: 12,
+        marginTop: 4,
+        borderWidth: 1,
+        borderColor: '#e8e8e8',
+        maxHeight: 250,
+        zIndex: 1000,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 8,
+        },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 8,
+    },
+    dropdownScrollView: {
+        maxHeight: 250,
+    },
+    dropdownItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f5f5f5',
+        backgroundColor: 'transparent',
+    },
+    lastDropdownItem: {
+        borderBottomWidth: 0,
+    },
+    selectedDropdownItem: {
+        backgroundColor: '#f0f8ff',
+        borderLeftWidth: 3,
+        borderLeftColor: '#2196f3',
+    },
+    dropdownItemText: {
+        fontSize: 16,
+        color: '#333',
+        fontWeight: '400',
+        flex: 1,
+    },
+    selectedDropdownItemText: {
+        color: '#2196f3',
+        fontWeight: '600',
+    },
+    checkmark: {
+        fontSize: 16,
+        color: '#2196f3',
+        fontWeight: 'bold',
+        marginLeft: 8,
     },
     scheduleTitle: {
         fontSize: 16,
