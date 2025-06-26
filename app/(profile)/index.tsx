@@ -293,23 +293,24 @@ export default function ProfilePage() {
             }            const successMessage = imageUploadSuccess
                 ? 'Profile updated successfully!'
                 : 'Profile updated successfully! (Image upload failed, but your other changes were saved)';            // Determine redirect route based on user role
-            let redirectRoute: any = '/(tabs)'; // default route
+            let redirectRoute: any = '/(guest)'; // default route
             if (data.role === 'admin') {
                 redirectRoute = '/(admin)';
             } else if (data.role === 'student') {
                 redirectRoute = '/(students)';
             }
+            router.replace(redirectRoute);
 
-            Alert.alert('Success', successMessage, [
-                {
-                    text: 'OK',
-                    onPress: () => {
-                        setTimeout(() => {
-                            router.replace(redirectRoute);
-                        }, 400);
-                    },
-                },
-            ]);
+            // Alert.alert('Success', successMessage, [
+            //     {
+            //         text: 'OK',
+            //         onPress: () => {
+            //             setTimeout(() => {
+            //                 router.replace(redirectRoute);
+            //             }, 400);
+            //         },
+            //     },
+            // ]);
         } catch (error) {
             Alert.alert('Error', `Failed to update profile: ${error}`);
             console.error('Error updating profile:', error);

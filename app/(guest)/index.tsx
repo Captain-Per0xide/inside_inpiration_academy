@@ -1,4 +1,3 @@
-import AddCoursesModal from '@/components/add-courses';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useEffect, useState } from 'react';
@@ -33,8 +32,7 @@ interface Course {
     created_at: string;
 }
 
-const Courses = () => {
-    const [modalVisible, setModalVisible] = useState(false);
+const GuestCourses = () => {
     const [courses, setCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -81,10 +79,19 @@ const Courses = () => {
         fetchCourses();
     }, [fetchCourses]);
 
-    const handleCourseAdded = () => {
-        // Refresh courses when a new course is added
-        fetchCourses();
-        setModalVisible(false);
+    const handleBuyNow = (course: Course) => {
+        // Handle buy now logic here
+        Alert.alert(
+            'Purchase Course',
+            `Proceed to purchase ${course.full_name} for ₹${course.fees_monthly}/month?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Buy Now', onPress: () => {
+                    // Add purchase logic here
+                    console.log('Purchasing course:', course.id);
+                }}
+            ]
+        );
     };
 
     // Calculate responsive columns and card width
@@ -220,12 +227,15 @@ const Courses = () => {
                         </View>
                     </View>
                     
-                    <TouchableOpacity style={styles.viewButton}>
+                    <TouchableOpacity 
+                        style={styles.buyNowButton}
+                        onPress={() => handleBuyNow(item)}
+                    >
                         <Text style={[
-                            styles.viewButtonText,
+                            styles.buyNowButtonText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                            View
+                            Buy Now
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -247,25 +257,14 @@ const Courses = () => {
                     styles.emptyStateTitle,
                     { fontSize: isSmallScreen ? 20 : 24 }
                 ]}>
-                    No Courses Yet
+                    No Courses Available
                 </Text>
                 <Text style={[
                     styles.emptyStateText,
                     { fontSize: isSmallScreen ? 14 : 16 }
                 ]}>
-                    Start building your curriculum by adding your first course
+                    Check back later for new courses and learning opportunities
                 </Text>
-                <TouchableOpacity 
-                    style={styles.emptyStateButton}
-                    onPress={() => setModalVisible(true)}
-                >
-                    <Text style={[
-                        styles.emptyStateButtonText,
-                        { fontSize: isSmallScreen ? 14 : 16 }
-                    ]}>
-                        Add First Course
-                    </Text>
-                </TouchableOpacity>
             </View>
         );
     };
@@ -294,7 +293,7 @@ const Courses = () => {
                 styles.title,
                 { fontSize: isSmallScreen ? 20 : 24 }
             ]}>
-                Course Management
+                Available Courses
             </Text>
             
             <FlatList
@@ -318,20 +317,6 @@ const Courses = () => {
                     />
                 }
                 showsVerticalScrollIndicator={false}
-            />
-                        
-            <TouchableOpacity
-                style={styles.fab}
-                activeOpacity={0.7}
-                onPress={() => setModalVisible(true)}
-            >
-                <Ionicons name="add" size={32} color="#fff" />
-            </TouchableOpacity>
-
-            <AddCoursesModal
-                visible={modalVisible}
-                onClose={() => setModalVisible(false)}
-                onSubmit={handleCourseAdded}
             />
         </View>
     );
@@ -363,7 +348,7 @@ const styles = StyleSheet.create({
         color: '#fff',
     },
     listContainer: {
-        paddingBottom: 100,
+        paddingBottom: 20,
     },
     emptyListContainer: {
         flex: 1,
@@ -402,15 +387,15 @@ const styles = StyleSheet.create({
         color: '#fff',
         textTransform: 'uppercase',
     },
-    viewButton: {
-        backgroundColor: '#FF5734',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
+    buyNowButton: {
+        backgroundColor: '#10B981',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
         borderRadius: 15,
         borderWidth: 1,
         borderColor: 'black',
     },
-    viewButtonText: {
+    buyNowButtonText: {
         color: '#fff',
         fontWeight: '600',
     },
@@ -487,17 +472,6 @@ const styles = StyleSheet.create({
         marginBottom: 30,
         lineHeight: 22,
     },
-    emptyStateButton: {
-        backgroundColor: '#2E4064',
-        paddingHorizontal: 24,
-        paddingVertical: 12,
-        borderRadius: 8,
-    },
-    emptyStateButtonText: {
-        color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: 'bold',
@@ -518,22 +492,6 @@ const styles = StyleSheet.create({
         flex: 1,
         flexWrap: 'wrap',
     },
-    fab: {
-        position: 'absolute',
-        right: 24,
-        bottom: 32,
-        width: 60,
-        height: 60,
-        borderRadius: 15,
-        backgroundColor: '#2E4064',
-        justifyContent: 'center',
-        alignItems: 'center',
-        elevation: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-    },
 });
 
-export default Courses;
+export default GuestCourses;

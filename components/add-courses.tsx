@@ -254,6 +254,11 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
 
   // Fetch instructors from Supabase
   const fetchInstructors = useCallback(async () => {
+    // Skip if not in browser environment (SSR)
+    if (typeof window === 'undefined') {
+      return;
+    }
+    
     try {
       setLoadingInstructors(true);
       const { data, error } = await supabase
@@ -510,6 +515,11 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
   };
 
   const submitCourse = async (): Promise<boolean> => {
+    // Skip if not in browser environment (SSR)
+    if (typeof window === 'undefined') {
+      return false;
+    }
+    
     try {
       // Generate UUID for the course
       const courseId = generateUUID();
@@ -678,6 +688,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
       animationType="slide"
       transparent
       onRequestClose={onClose}
+      style={{ pointerEvents: 'auto'}}
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
@@ -815,7 +826,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
               <View
                 style={[
                   styles.instructorDropdownWrapper,
-                  showInstructorPicker && { marginBottom: 450 },
+                  showInstructorPicker && { marginBottom: 250 },
                 ]}
               >
                 <TouchableOpacity
@@ -1193,6 +1204,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+    pointerEvents: "auto",
   },
   modalContent: {
     width: "100%",
@@ -1202,6 +1214,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: "hidden",
     position: "relative",
+    pointerEvents: "auto",
   },
   closeButton: {
     position: "absolute",
@@ -1229,7 +1242,7 @@ const styles = StyleSheet.create({
     borderBottomColor: "#f0f0f0",
   },
   imageContainer: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   courseImage: {
     width: 150,
@@ -1425,13 +1438,7 @@ const styles = StyleSheet.create({
   semesterButtonActive: {
     borderColor: "#2196f3",
     backgroundColor: "#f0f8ff",
-    shadowColor: "#2196f3",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    boxShadow: "0 2px 4px rgba(33, 150, 243, 0.1)",
     elevation: 2,
   },
   semesterText: {
@@ -1442,10 +1449,18 @@ const styles = StyleSheet.create({
   dropdownArrow: {
     fontSize: 12,
     color: "#666",
-    transform: [{ rotate: "0deg" }],
+    // Use CSS transform for better web compatibility
+    ...(Platform.OS === 'web' 
+      ? { transform: "rotate(0deg)" }
+      : { transform: [{ rotate: "0deg" }] }
+    ),
   },
   dropdownArrowRotated: {
-    transform: [{ rotate: "180deg" }],
+    // Use CSS transform for better web compatibility  
+    ...(Platform.OS === 'web'
+      ? { transform: "rotate(180deg)" }
+      : { transform: [{ rotate: "180deg" }] }
+    ),
     color: "#2196f3",
   },
   dropdownContainer: {
@@ -1459,13 +1474,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e8e8e8",
     zIndex: 150,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    boxShadow: "0 8px 12px rgba(0, 0, 0, 0.15)",
     elevation: 8,
   },
   dropdownItem: {
@@ -1561,13 +1570,7 @@ const styles = StyleSheet.create({
   dayButtonActive: {
     borderColor: "#2196f3",
     backgroundColor: "#f0f8ff",
-    shadowColor: "#2196f3",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    boxShadow: "0 2px 4px rgba(33, 150, 243, 0.1)",
     elevation: 2,
   },
   dayText: {
@@ -1586,13 +1589,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e8e8e8",
     zIndex: 301,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    boxShadow: "0 8px 12px rgba(0, 0, 0, 0.15)",
     elevation: 8,
   },
   dayDropdownItem: {
@@ -1667,13 +1664,7 @@ const styles = StyleSheet.create({
   instructorButtonActive: {
     borderColor: "#2196f3",
     backgroundColor: "#f0f8ff",
-    shadowColor: "#2196f3",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    boxShadow: "0 2px 4px rgba(33, 150, 243, 0.1)",
     elevation: 2,
   },
   instructorContent: {
@@ -1692,13 +1683,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e8e8e8",
     zIndex: 201,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    boxShadow: "0 8px 12px rgba(0, 0, 0, 0.15)",
     elevation: 8,
   },
   instructorDropdownItem: {
@@ -1753,13 +1738,7 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: "center",
     zIndex: 201,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    boxShadow: "0 8px 12px rgba(0, 0, 0, 0.15)",
     elevation: 8,
   },
   noInstructorsText: {
@@ -1776,6 +1755,7 @@ const colorPickerStyles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
+    pointerEvents: "auto",
   },
   modalContent: {
     width: "90%",
@@ -1783,6 +1763,7 @@ const colorPickerStyles = StyleSheet.create({
     backgroundColor: "#fff",
     borderRadius: 20,
     padding: 20,
+    pointerEvents: "auto",
   },
   header: {
     flexDirection: "row",
