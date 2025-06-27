@@ -424,11 +424,15 @@ const PaymentManagementPage = () => {
         return;
       }
 
-      // Update user role if they are a guest
+      // Update user based on their current role
       if (payment.user_role === "guest") {
+        // For guests: update role to student and add course to enrolled_courses
         const { error: userUpdateError } = await supabase
           .from("users")
-          .update({ role: "student" })
+          .update({ 
+            role: "student",
+            enrolled_courses: [payment.course_id]
+          })
           .eq("id", payment.user_id);
 
         if (userUpdateError) {
@@ -437,6 +441,41 @@ const PaymentManagementPage = () => {
             "Warning",
             "Payment approved but failed to update user role"
           );
+        }
+      } else if (payment.user_role === "student") {
+        // For existing students: add course to enrolled_courses array
+        const { data: userData, error: fetchUserError } = await supabase
+          .from("users")
+          .select("enrolled_courses")
+          .eq("id", payment.user_id)
+          .single();
+
+        if (fetchUserError) {
+          console.error("Error fetching user data:", fetchUserError);
+          Alert.alert(
+            "Warning",
+            "Payment approved but failed to update enrolled courses"
+          );
+        } else {
+          const currentEnrolledCourses = userData.enrolled_courses || [];
+          
+          // Add the new course if not already enrolled
+          if (!currentEnrolledCourses.includes(payment.course_id)) {
+            const updatedEnrolledCourses = [...currentEnrolledCourses, payment.course_id];
+            
+            const { error: updateCoursesError } = await supabase
+              .from("users")
+              .update({ enrolled_courses: updatedEnrolledCourses })
+              .eq("id", payment.user_id);
+
+            if (updateCoursesError) {
+              console.error("Error updating enrolled courses:", updateCoursesError);
+              Alert.alert(
+                "Warning",
+                "Payment approved but failed to update enrolled courses"
+              );
+            }
+          }
         }
       }
 
