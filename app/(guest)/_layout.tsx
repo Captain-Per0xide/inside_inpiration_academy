@@ -1,4 +1,6 @@
 import CourseIcon from "@/components/icons/CourseIcon";
+import { supabase } from "@/lib/supabase";
+import { authService } from "@/services/authService";
 import { Ionicons } from "@expo/vector-icons";
 import {
   DrawerContentComponentProps,
@@ -7,11 +9,60 @@ import {
 } from "@react-navigation/drawer";
 import { router } from "expo-router";
 import { Drawer } from "expo-router/drawer";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Image, Text, TouchableOpacity, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
+interface UserData {
+  id?: string;
+  email?: string;
+  name?: string;
+  user_image?: string | null;
+}
+
 function CustomDrawerContent(props: DrawerContentComponentProps) {
+  const [userData, setUserData] = useState<UserData>({});
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    fetchUserData();
+  }, []);
+
+  const fetchUserData = async () => {
+    try {
+      const id = await authService.getCurrentUserUID();
+      const email = await authService.getCurrentUserEmail();
+
+      if (!id || !email) {
+        setIsLoggedIn(false);
+        return;
+      }
+
+      setIsLoggedIn(true);
+      console.log('Fetching user data for guest drawer, ID:', id);
+
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, email, name, user_image')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Guest drawer fetch error:', error);
+        return;
+      }
+
+      if (data) {
+        setUserData(data);
+      } else {
+        // If no user data exists in database, use current auth info
+        setUserData({ id, email, name: 'User' });
+      }
+    } catch (error) {
+      console.error('Error fetching user data for guest drawer:', error);
+      setIsLoggedIn(false);
+    }
+  };
   const handleLogin = () => {
     router.push("/(auth)");
   };
@@ -22,6 +73,33 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
       { text: "Cancel", style: "cancel" },
       { text: "Sign Up", onPress: () => router.push("/(auth)") },
     ]);
+  };
+
+  const handleLogout = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase.auth.signOut();
+              if (error) throw error;
+              router.replace('/(auth)');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to logout');
+              console.error('Logout error:', error);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -67,78 +145,157 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
               marginHorizontal: 10,
             }}
           >
-            <View style={{ alignItems: "center", marginBottom: 15 }}>
-              <Ionicons
-                name="person-circle-outline"
-                size={60}
-                color="#FCCC42"
-              />
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "bold",
-                  color: "#fff",
-                  marginTop: 10,
-                  marginBottom: 5,
-                }}
-              >
-                Welcome, Guest!
-              </Text>
-              <Text
-                style={{
-                  fontSize: 14,
-                  color: "#fefefefe",
-                  textAlign: "center",
-                }}
-              >
-                Explore our courses and join our academy
-              </Text>
-            </View>
+            {isLoggedIn ? (
+              // Logged in user info
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+                  {userData.user_image ? (
+                    <Image
+                      source={{ uri: userData.user_image }}
+                      style={{
+                        width: 50,
+                        height: 50,
+                        borderRadius: 25,
+                        marginRight: 15,
+                        backgroundColor: '#e0e0e0'
+                      }}
+                    />
+                  ) : (
+                    <View style={{
+                      width: 50,
+                      height: 50,
+                      borderRadius: 25,
+                      backgroundColor: '#FCCC42',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      marginRight: 15
+                    }}>
+                      <Text style={{
+                        fontSize: 20,
+                        fontWeight: 'bold',
+                        color: '#fff'
+                      }}>
+                        {userData.name && userData.name.length > 0 ? userData.name.charAt(0).toUpperCase() : 'U'}
+                      </Text>
+                    </View>
+                  )}
 
-            <TouchableOpacity
-              style={{
-                backgroundColor: "#FCCC42",
-                paddingVertical: 12,
-                paddingHorizontal: 20,
-                borderRadius: 8,
-                alignItems: "center",
-                marginBottom: 10,
-              }}
-              onPress={handleLogin}
-            >
-              <Text
-                style={{
-                  color: "#111827",
-                  fontSize: 16,
-                  fontWeight: "bold",
-                }}
-              >
-                Login
-              </Text>
-            </TouchableOpacity>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{
+                      fontSize: 16,
+                      fontWeight: 'bold',
+                      color: '#fff',
+                      marginBottom: 2
+                    }}>
+                      {userData.name ? userData.name : 'User'}
+                    </Text>
+                    <Text style={{
+                      fontSize: 14,
+                      color: '#fefefe'
+                    }} numberOfLines={1}>
+                      {userData.email ? userData.email : 'No email'}
+                    </Text>
+                  </View>
+                </View>
 
-            <TouchableOpacity
-              style={{
-                backgroundColor: "transparent",
-                paddingVertical: 12,
-                paddingHorizontal: 20,
-                borderRadius: 8,
-                alignItems: "center",
-                borderWidth: 1,
-                borderColor: "#FCCC42",
-              }}
-              onPress={handleSignUp}
-            >
-              <Text
-                style={{
-                  color: "#FCCC42",
-                  fontSize: 16,
-                  fontWeight: "bold",
-                }}
-              >
-                Sign Up
-              </Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#ff4444",
+                    paddingVertical: 12,
+                    paddingHorizontal: 20,
+                    borderRadius: 8,
+                    alignItems: "center",
+                  }}
+                  onPress={handleLogout}
+                >
+                  <Text
+                    style={{
+                      color: "#fff",
+                      fontSize: 16,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Logout
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              // Guest user interface
+              <>
+                <View style={{ alignItems: "center", marginBottom: 15 }}>
+                  <Ionicons
+                    name="person-circle-outline"
+                    size={60}
+                    color="#FCCC42"
+                  />
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: "bold",
+                      color: "#fff",
+                      marginTop: 10,
+                      marginBottom: 5,
+                    }}
+                  >
+                    Welcome, Guest!
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      color: "#fefefefe",
+                      textAlign: "center",
+                    }}
+                  >
+                    Explore our courses and join our academy
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#FCCC42",
+                    paddingVertical: 12,
+                    paddingHorizontal: 20,
+                    borderRadius: 8,
+                    alignItems: "center",
+                    marginBottom: 10,
+                  }}
+                  onPress={handleLogin}
+                >
+                  <Text
+                    style={{
+                      color: "#111827",
+                      fontSize: 16,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Login
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "transparent",
+                    paddingVertical: 12,
+                    paddingHorizontal: 20,
+                    borderRadius: 8,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: "#FCCC42",
+                  }}
+                  onPress={handleSignUp}
+                >
+                  <Text
+                    style={{
+                      color: "#FCCC42",
+                      fontSize: 16,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Sign Up
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </DrawerContentScrollView>
       </View>
