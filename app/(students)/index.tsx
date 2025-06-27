@@ -64,6 +64,21 @@ const StudentsDashboard = () => {
         return months[new Date().getMonth()];
     }, []);
 
+    // Helper functions for course type-based fee rendering
+    const getCourseFee = useCallback((course: Course) => {
+        return course.course_type === 'Core Curriculum' ? course.fees_monthly : course.fees_total || 0;
+    }, []);
+
+    const getFeeLabel = useCallback((course: Course) => {
+        return course.course_type === 'Core Curriculum' ? 'Monthly Fee' : 'Total Fee';
+    }, []);
+
+    const getFeeDisplay = useCallback((course: Course) => {
+        const fee = getCourseFee(course);
+        const feeType = course.course_type === 'Core Curriculum' ? '/month' : '';
+        return `₹${fee}${feeType}`;
+    }, [getCourseFee]);
+
     const checkPendingPayments = useCallback(async (userId: string) => {
         try {
             const currentMonth = getCurrentMonthName();
@@ -275,7 +290,7 @@ const StudentsDashboard = () => {
                             styles.infoText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                            Course Fees: ₹{item.fees_monthly}/month
+                            {getFeeLabel(item)}: {getFeeDisplay(item)}
                         </Text>
                     </View>
                     

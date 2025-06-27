@@ -19,6 +19,8 @@ interface Course {
     id: string;
     full_name: string;
     fees_monthly: number;
+    fees_total: number | null;
+    course_type: string;
     codename: string;
 }
 
@@ -30,6 +32,7 @@ interface PaymentRecord {
     txn_id: string;
     amount: number;
     created_at: string;
+    course_type?: string;
 }
 
 const PaymentScreen = () => {
@@ -89,7 +92,7 @@ const PaymentScreen = () => {
         try {
             const { data, error } = await supabase
                 .from('courses')
-                .select('id, full_name, fees_monthly, codename')
+                .select('id, full_name, fees_monthly, fees_total, course_type, codename')
                 .in('id', courseIds);
 
             if (error) {
@@ -119,7 +122,7 @@ const PaymentScreen = () => {
 
                 const { data: courseData } = await supabase
                     .from('courses')
-                    .select('full_name, fees_monthly')
+                    .select('full_name, fees_monthly, fees_total, course_type')
                     .eq('id', courseId)
                     .single();
 
@@ -131,16 +134,21 @@ const PaymentScreen = () => {
                             payment.user_id === userId && payment.status === 'success'
                         );
                         
-                        userSuccessfulPayments.forEach((payment: any) => {
-                            history.push({
-                                course_id: courseId,
-                                course_name: courseData?.full_name || 'Unknown Course',
-                                month,
-                                status: payment.status,
-                                txn_id: payment.txn_id,
-                                amount: courseData?.fees_monthly || 0,
-                                created_at: payment.created_at || new Date().toISOString()
-                            });
+                        userSuccessfulPayments.forEach((payment: any) => {                // Use fees_monthly for Core Curriculum, fees_total for Elective
+                const amount = courseData?.course_type === 'Core Curriculum' 
+                    ? courseData?.fees_monthly || 0 
+                    : courseData?.fees_total || 0;
+                    
+                history.push({
+                    course_id: courseId,
+                    course_name: courseData?.full_name || 'Unknown Course',
+                    month,
+                    status: payment.status,
+                    txn_id: payment.txn_id,
+                    amount: amount,
+                    created_at: payment.created_at || new Date().toISOString(),
+                    course_type: courseData?.course_type || 'Unknown'
+                });
                         });
                     }
                 });
@@ -175,11 +183,21 @@ const PaymentScreen = () => {
         loadData();
     }, [fetchUserInfo]);
 
+    const getCourseFee = (course: Course) => {
+        return course.course_type === 'Core Curriculum' ? course.fees_monthly : course.fees_total || 0;
+    };
+
+    const getFeeLabel = (course: Course) => {
+        return course.course_type === 'Core Curriculum' ? 'Monthly Fee:' : 'Total Fee:';
+    };
+
     const handleMakePayment = (course: Course) => {
-        // TODO: Navigate to payment form or show payment modal
+        const fee = getCourseFee(course);
+        const feeType = course.course_type === 'Core Curriculum' ? 'monthly' : 'total';
+        
         Alert.alert(
             'Make Payment',
-            `Make payment for ${course.full_name}\nAmount: ₹${course.fees_monthly}`,
+            `Make payment for ${course.full_name}\nAmount: ₹${fee} (${feeType})`,
             [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Proceed', onPress: () => {
@@ -311,6 +329,13 @@ const PaymentScreen = () => {
                                             <Text style={[styles.courseCode, { color: subtitleColor }]}>
                                                 {course.codename}
                                             </Text>
+                                            <View style={[styles.courseTypeBadge, { 
+                                                backgroundColor: course.course_type === 'Core Curriculum' ? '#10B981' : '#F59E0B' 
+                                            }]}>
+                                                <Text style={styles.courseTypeText}>
+                                                    {course.course_type === 'Core Curriculum' ? 'Core' : 'Elective'}
+                                                </Text>
+                                            </View>
                                         </View>
                                         <View style={[styles.courseIcon, { backgroundColor: isDark ? 'rgba(78, 140, 255, 0.2)' : 'rgba(78, 140, 255, 0.1)' }]}>
                                             <Ionicons name="book" size={24} color="#4e8cff" />
@@ -318,9 +343,9 @@ const PaymentScreen = () => {
                                     </View>
 
                                     <View style={styles.paymentInfo}>
-                                        <Text style={[styles.amountLabel, { color: subtitleColor }]}>Monthly Fee:</Text>
+                                        <Text style={[styles.amountLabel, { color: subtitleColor }]}>{getFeeLabel(course)}</Text>
                                         <Text style={[styles.amount, { fontSize: isSmallScreen ? 20 : 24 }]}>
-                                            ₹{course.fees_monthly}
+                                            ₹{getCourseFee(course)}
                                         </Text>
                                     </View>
 
@@ -393,6 +418,15 @@ const PaymentScreen = () => {
                                                                 <Text style={[styles.historyMonth, { color: subtitleColor }]}>
                                                                     Payment for {payment.month}
                                                                 </Text>
+                                                                {payment.course_type && (
+                                                                    <View style={[styles.historyCourseBadge, { 
+                                                                        backgroundColor: payment.course_type === 'Core Curriculum' ? '#10B981' : '#F59E0B' 
+                                                                    }]}>
+                                                                        <Text style={styles.historyCourseTypeText}>
+                                                                            {payment.course_type === 'Core Curriculum' ? 'Core' : 'Elective'}
+                                                                        </Text>
+                                                                    </View>
+                                                                )}
                                                             </View>
                                                             <View style={[styles.statusBadge, { backgroundColor: '#10B981' }]}>
                                                                 <Ionicons 
@@ -551,6 +585,18 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontStyle: 'italic',
     },
+    courseTypeBadge: {
+        marginTop: 8,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+        alignSelf: 'flex-start',
+    },
+    courseTypeText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '600',
+    },
     courseIcon: {
         padding: 12,
         borderRadius: 50,
@@ -649,6 +695,18 @@ const styles = StyleSheet.create({
     },
     historyMonth: {
         fontSize: 14,
+    },
+    historyCourseBadge: {
+        marginTop: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        alignSelf: 'flex-start',
+    },
+    historyCourseTypeText: {
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: '600',
     },
     statusBadge: {
         flexDirection: 'row',

@@ -43,7 +43,6 @@ const GuestCourses = () => {
     new Set()
   );
 
-  // Get current month name
   const getCurrentMonthName = useCallback(() => {
     const months = [
       "Jan",
@@ -61,6 +60,21 @@ const GuestCourses = () => {
     ];
     return months[new Date().getMonth()];
   }, []);
+
+  // Helper functions for course type-based fee rendering
+  const getCourseFee = useCallback((course: Course) => {
+    return course.course_type === 'Core Curriculum' ? course.fees_monthly : course.fees_total || 0;
+  }, []);
+
+  const getFeeLabel = useCallback((course: Course) => {
+    return course.course_type === 'Core Curriculum' ? 'Monthly Fee' : 'Total Fee';
+  }, []);
+
+  const getFeeDisplay = useCallback((course: Course) => {
+    const fee = getCourseFee(course);
+    const feeType = course.course_type === 'Core Curriculum' ? '/month' : '';
+    return `₹${fee}${feeType}`;
+  }, [getCourseFee]);
 
   const fetchUserSession = useCallback(async () => {
     try {
@@ -300,7 +314,7 @@ const GuestCourses = () => {
             <Text
               style={[styles.infoText, { fontSize: isSmallScreen ? 14 : 16 }]}
             >
-              Course Fees: ₹{item.fees_monthly}/month
+              {getFeeLabel(item)}: {getFeeDisplay(item)}
             </Text>
           </View>
           <View style={styles.infoRow}>

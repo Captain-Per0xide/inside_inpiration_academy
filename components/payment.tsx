@@ -20,6 +20,8 @@ interface Course {
   id: string;
   full_name: string;
   fees_monthly: number;
+  fees_total?: number;
+  course_type: string;
   codename: string;
   instructor: string;
 }
@@ -82,6 +84,21 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
       "Dec",
     ];
     return months[new Date().getMonth()];
+  };
+
+  // Helper functions for course type-based fee rendering
+  const getCourseFee = (course: Course) => {
+    return course.course_type === 'Core Curriculum' ? course.fees_monthly : course.fees_total || 0;
+  };
+
+  const getFeeLabel = (course: Course) => {
+    return course.course_type === 'Core Curriculum' ? 'Monthly Fee' : 'Total Fee';
+  };
+
+  const getFeeDisplay = (course: Course) => {
+    const fee = getCourseFee(course);
+    const feeType = course.course_type === 'Core Curriculum' ? '/month' : '';
+    return `₹${fee}${feeType}`;
   };
 
   useEffect(() => {
@@ -148,7 +165,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
     try {
       const { data, error } = await supabase
         .from("courses")
-        .select("id, full_name, fees_monthly, codename, instructor")
+        .select("id, full_name, fees_monthly, fees_total, course_type, codename, instructor")
         .eq("id", courseId)
         .single();
 
@@ -412,7 +429,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
         const { error: insertError } = await supabase.from("fees").insert({
           id: course.id,
           [currentMonth]: currentMonthData,
-          fees_total: course.fees_monthly,
+          fees_total: getCourseFee(course),
         });
 
         if (insertError) {
@@ -490,6 +507,18 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
         >
           {course.full_name}
         </Text>
+        <View style={styles.courseTypeContainer}>
+          <Text
+            style={[
+              styles.courseTypeBadge,
+              course.course_type === 'Core Curriculum' 
+                ? styles.coreTypeBadge 
+                : styles.electiveTypeBadge
+            ]}
+          >
+            {course.course_type}
+          </Text>
+        </View>
         <Text
           style={[styles.courseCode, { fontSize: isSmallScreen ? 14 : 16 }]}
         >
@@ -507,10 +536,10 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
           <Text
             style={[styles.amountLabel, { fontSize: isSmallScreen ? 16 : 18 }]}
           >
-            Monthly Fee:
+            {getFeeLabel(course)}:
           </Text>
           <Text style={[styles.amount, { fontSize: isSmallScreen ? 20 : 24 }]}>
-            ₹{course.fees_monthly}
+            {getFeeDisplay(course)}
           </Text>
         </View>
       </View>
@@ -768,6 +797,26 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#fff",
     marginBottom: 8,
+  },
+  courseTypeContainer: {
+    flexDirection: "row",
+    marginBottom: 12,
+  },
+  courseTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  coreTypeBadge: {
+    backgroundColor: "#10B981",
+    color: "#fff",
+  },
+  electiveTypeBadge: {
+    backgroundColor: "#F59E0B",
+    color: "#fff",
   },
   courseCode: {
     color: "#9CA3AF",

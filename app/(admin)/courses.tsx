@@ -40,6 +40,21 @@ const Courses = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [screenData, setScreenData] = useState(Dimensions.get('window'));
 
+    // Helper functions for course type-based fee rendering
+    const getCourseFee = useCallback((course: Course) => {
+        return course.course_type === 'Core Curriculum' ? course.fees_monthly : course.fees_total || 0;
+    }, []);
+
+    const getFeeLabel = useCallback((course: Course) => {
+        return course.course_type === 'Core Curriculum' ? 'Monthly Fee' : 'Total Fee';
+    }, []);
+
+    const getFeeDisplay = useCallback((course: Course) => {
+        const fee = getCourseFee(course);
+        const feeType = course.course_type === 'Core Curriculum' ? '/month' : '';
+        return `₹${fee}${feeType}`;
+    }, [getCourseFee]);
+
     const fetchCourses = useCallback(async () => {
         try {
             const { data, error } = await supabase
@@ -168,7 +183,7 @@ const Courses = () => {
                             styles.infoText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                            Course Fees: ₹{item.fees_monthly}/month
+                            {getFeeLabel(item)}: {getFeeDisplay(item)}
                         </Text>
                     </View>
                     <View style={styles.infoRow}>

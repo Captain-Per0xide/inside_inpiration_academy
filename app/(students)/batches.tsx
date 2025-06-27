@@ -25,6 +25,21 @@ const MyBatchesScreen = () => {
     const [loading, setLoading] = useState(true);
     const [screenData, setScreenData] = useState(Dimensions.get('window'));
 
+    // Helper functions for course type-based fee rendering
+    const getCourseFee = (course: Course) => {
+        return course.course_type === 'Core Curriculum' ? course.fees_monthly : course.fees_total || 0;
+    };
+
+    const getFeeLabel = (course: Course) => {
+        return course.course_type === 'Core Curriculum' ? 'Monthly Fee' : 'Total Fee';
+    };
+
+    const getFeeDisplay = (course: Course) => {
+        const fee = getCourseFee(course);
+        const feeType = course.course_type === 'Core Curriculum' ? '/month' : '';
+        return `₹${fee}${feeType}`;
+    };
+
     useEffect(() => {
         fetchEnrolledCourses();
     }, []);
@@ -158,7 +173,7 @@ const MyBatchesScreen = () => {
                             styles.infoText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                            Course Fees: ₹{item.fees_monthly}/month
+                            {getFeeLabel(item)}: {getFeeDisplay(item)}
                         </Text>
                     </View>
                     
