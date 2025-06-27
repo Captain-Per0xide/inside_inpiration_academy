@@ -40,6 +40,34 @@ interface PendingPayment {
   user_role: string;
 }
 
+interface Course {
+  id: string;
+  codename: string;
+  codename_color: string;
+  full_name: string;
+  full_name_color: string;
+  course_type: string;
+  semester: number;
+  class_schedule: string;
+  course_logo: string;
+  course_duration: number | null;
+  fees_monthly: number;
+  fees_total: number | null;
+  instructor: string;
+  instructor_image: string | null;
+  created_at: string;
+}
+
+interface PaymentHistoryEntry {
+  user_id: string;
+  txn_id: string;
+  ss_uploaded_path: string;
+  email_id: string;
+  phone_number: string;
+  status: string;
+  user_name: string;
+}
+
 const PaymentManagementPage = () => {
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -55,7 +83,7 @@ const PaymentManagementPage = () => {
   // Pending payments state
   const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
-  const [selectedTab, setSelectedTab] = useState<"config" | "pending">(
+  const [selectedTab, setSelectedTab] = useState<"config" | "pending" | "history">(
     "config"
   );
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(
@@ -63,6 +91,18 @@ const PaymentManagementPage = () => {
   );
   const [modalVisible, setModalVisible] = useState(false);
   const [approving, setApproving] = useState(false);
+
+  // Payment History state
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [coursesLoading, setCoursesLoading] = useState(false);
+  const [selectedCourse, setSelectedCourse] = useState<Course | null>(null);
+  const [monthsModalVisible, setMonthsModalVisible] = useState(false);
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistoryEntry[]>([]);
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [filteredPaymentHistory, setFilteredPaymentHistory] = useState<PaymentHistoryEntry[]>([]);
 
   useEffect(() => {
     const onChange = (result: { window: any }) => {
@@ -199,10 +239,113 @@ const PaymentManagementPage = () => {
     }
   }, []);
 
+  const fetchCourses = useCallback(async () => {
+    try {
+      setCoursesLoading(true);
+
+      const { data, error } = await supabase
+        .from("courses")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error fetching courses:", error);
+        Alert.alert("Error", "Failed to fetch courses");
+        return;
+      }
+
+      setCourses(data || []);
+    } catch (error) {
+      console.error("Error in fetchCourses:", error);
+      Alert.alert("Error", "Failed to fetch courses");
+    } finally {
+      setCoursesLoading(false);
+    }
+  }, []);
+
+  const fetchPaymentHistory = useCallback(async (courseId: string, month: string) => {
+    try {
+      setHistoryLoading(true);
+
+      // Fetch the specific month data from fees table
+      const { data: feeData, error: feeError } = await supabase
+        .from("fees")
+        .select(`"${month}"`)
+        .eq("id", courseId)
+        .single();
+
+      if (feeError) {
+        console.error("Error fetching fee data:", feeError);
+        Alert.alert("Error", "Failed to fetch payment history");
+        return;
+      }
+
+      const monthData = feeData[month] as any[];
+      if (!monthData || !Array.isArray(monthData)) {
+        setPaymentHistory([]);
+        return;
+      }
+
+      // Filter for successful payments only
+      const successfulPayments = monthData.filter((payment: any) => payment.status === "success");
+
+      // Get user names for each payment
+      const userIds = successfulPayments.map((payment: any) => payment.user_id);
+      const { data: usersData, error: usersError } = await supabase
+        .from("users")
+        .select("id, name")
+        .in("id", userIds);
+
+      if (usersError) {
+        console.error("Error fetching users:", usersError);
+      }
+
+      // Map payments with user names
+      const historyWithUserNames = successfulPayments.map((payment: any) => {
+        const user = usersData?.find((u) => u.id === payment.user_id);
+        return {
+          ...payment,
+          user_name: user?.name || "Unknown User",
+        };
+      });
+
+      setPaymentHistory(historyWithUserNames);
+      setFilteredPaymentHistory(historyWithUserNames);
+    } catch (error) {
+      console.error("Error in fetchPaymentHistory:", error);
+      Alert.alert("Error", "Failed to fetch payment history");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  // Filter payment history based on search query
+  const filterPaymentHistory = useCallback(() => {
+    if (!searchQuery.trim()) {
+      setFilteredPaymentHistory(paymentHistory);
+      return;
+    }
+
+    const query = searchQuery.toLowerCase().trim();
+    const filtered = paymentHistory.filter((payment) => 
+      payment.user_name.toLowerCase().includes(query) ||
+      payment.email_id.toLowerCase().includes(query)
+    );
+    setFilteredPaymentHistory(filtered);
+  }, [paymentHistory, searchQuery]);
+
+  // Update filtered results when search query or payment history changes
+  useEffect(() => {
+    filterPaymentHistory();
+  }, [filterPaymentHistory]);
+
   useEffect(() => {
     fetchPaymentInfo();
     fetchPendingPayments();
-  }, [fetchPaymentInfo, fetchPendingPayments]);
+    if (selectedTab === "history") {
+      fetchCourses();
+    }
+  }, [fetchPaymentInfo, fetchPendingPayments, fetchCourses, selectedTab]);
 
   const uriToBlob = async (uri: string): Promise<ArrayBuffer> => {
     const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -579,6 +722,45 @@ const PaymentManagementPage = () => {
     setModalVisible(true);
   };
 
+  const handleCourseViewPress = (course: Course) => {
+    setSelectedCourse(course);
+    setMonthsModalVisible(true);
+  };
+
+  const handleMonthPress = async (month: string) => {
+    if (!selectedCourse) return;
+    
+    setSelectedMonth(month);
+    setMonthsModalVisible(false);
+    setHistoryModalVisible(true);
+    await fetchPaymentHistory(selectedCourse.id, month);
+  };
+
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"
+  ];
+
+  // Calculate responsive columns and card width for course cards
+  const getResponsiveLayout = useCallback(() => {
+    const { width } = screenData;
+    
+    // Define breakpoints
+    if (width < 600) {
+      // Mobile: 1 column
+      return { numColumns: 1, cardWidth: width - 40 };
+    } else if (width < 900) {
+      // Tablet portrait: 2 columns
+      return { numColumns: 2, cardWidth: (width - 60) / 2 };
+    } else if (width < 1200) {
+      // Tablet landscape: 3 columns
+      return { numColumns: 3, cardWidth: (width - 80) / 3 };
+    } else {
+      // Desktop: 4 columns
+      return { numColumns: 4, cardWidth: (width - 100) / 4 };
+    }
+  }, [screenData]);
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -615,7 +797,7 @@ const PaymentManagementPage = () => {
               selectedTab === "config" && styles.activeTabButtonText,
             ]}
           >
-            Payment Config
+            Payment Configuration
           </Text>
         </TouchableOpacity>
 
@@ -634,6 +816,24 @@ const PaymentManagementPage = () => {
             ]}
           >
             Pending Payments ({pendingPayments.length})
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            selectedTab === "history" && styles.activeTabButton,
+          ]}
+          onPress={() => setSelectedTab("history")}
+        >
+          <Text
+            style={[
+              styles.tabButtonText,
+              { fontSize: isSmallScreen ? 14 : 16 },
+              selectedTab === "history" && styles.activeTabButtonText,
+            ]}
+          >
+            Payment History
           </Text>
         </TouchableOpacity>
       </View>
@@ -798,7 +998,7 @@ const PaymentManagementPage = () => {
                 <Text
                   style={[
                     styles.infoText,
-                    { fontSize: isSmallScreen ? 14 : 16 },
+                    { fontSize: isSmallScreen ? 14 : 16, color: "#fff" },
                   ]}
                 >
                   {paymentInfo.phone_number}
@@ -810,7 +1010,7 @@ const PaymentManagementPage = () => {
                 <Text
                   style={[
                     styles.infoText,
-                    { fontSize: isSmallScreen ? 14 : 16 },
+                    { fontSize: isSmallScreen ? 14 : 16, color: "#fff" },
                   ]}
                 >
                   {paymentInfo.upi_id}
@@ -832,7 +1032,7 @@ const PaymentManagementPage = () => {
             </View>
           )}
         </>
-      ) : (
+      ) : selectedTab === "pending" ? (
         <>
           <Text
             style={[styles.subtitle, { fontSize: isSmallScreen ? 14 : 16 }]}
@@ -983,6 +1183,138 @@ const PaymentManagementPage = () => {
             </View>
           )}
         </>
+      ) : selectedTab === "history" ? (
+        <>
+          {/* Payment History Tab */}
+          {coursesLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#2E4064" />
+              <Text style={[styles.loadingText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                Loading courses...
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.historyContainer}>
+              <Text style={[styles.subtitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                View payment history by course and month
+              </Text>
+
+              {courses.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Ionicons name="school-outline" size={80} color="#666" />
+                  <Text style={[styles.emptyStateTitle, { fontSize: isSmallScreen ? 20 : 24 }]}>
+                    No Courses Available
+                  </Text>
+                  <Text style={[styles.emptyStateText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                    Create courses to view payment history
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.coursesGrid}>
+                  {(() => {
+                    const { numColumns, cardWidth } = getResponsiveLayout();
+                    const isMediumScreen = screenData.width < 900;
+                    
+                    return courses.map((course) => (
+                      <View key={course.id} style={[
+                        styles.courseCard, 
+                        { 
+                          backgroundColor: course.full_name_color,
+                          width: numColumns === 1 ? '100%' : cardWidth,
+                          minHeight: isSmallScreen ? 220 : isMediumScreen ? 260 : 280,
+                        }
+                      ]}>
+                        <View style={styles.cardHeader}>
+                          <View style={[styles.codenameTag, { backgroundColor: course.codename_color }]}>
+                            <Text style={[styles.codenameText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                              {course.codename}
+                            </Text>
+                          </View>
+                          <Ionicons 
+                            name={course.course_type === "Core Curriculum" ? "school-outline" : "briefcase-outline"}
+                            size={isSmallScreen ? 24 : 26}
+                            color="black"
+                          />
+                        </View>
+                        
+                        <Text style={[styles.courseTitle, { 
+                          fontSize: isSmallScreen ? 18 : isMediumScreen ? 19 : 20,
+                          marginBottom: isSmallScreen ? 12 : 16
+                        }]}>
+                          {course.full_name}
+                        </Text>
+                        
+                        <View style={styles.courseInfo}>
+                          <View style={styles.infoRow}>
+                            <Ionicons name="time-outline" size={isSmallScreen ? 14 : 16} color="black" />
+                            <Text style={[styles.infoText, { fontSize: isSmallScreen ? 14 : 16, color: 'black' }]}>
+                              Course Duration: {course.course_duration ? `${course.course_duration} months` : 'Ongoing'}
+                            </Text>
+                          </View>
+                          
+                          <View style={styles.infoRow}>
+                            <Ionicons name="cash-outline" size={isSmallScreen ? 14 : 16} color="black" />
+                            <Text style={[styles.infoText, { fontSize: isSmallScreen ? 14 : 16, color: 'black' }]}>
+                              Course Fees: ₹{course.fees_monthly}/month
+                            </Text>
+                          </View>
+                          
+                          <View style={styles.infoRow}>
+                            <Text style={{ fontSize: isSmallScreen ? 14 : 16, fontWeight: '400', color: 'black' }}>
+                              Includes 2 eBooks, 2 Notes & 2 Sample Question Set with PYQ solved
+                            </Text>
+                          </View>
+                        </View>
+                        
+                        <View style={styles.instructorSection}>
+                          <View style={styles.instructorInfo}>
+                            {course.instructor_image ? (
+                              <Image 
+                                source={{ uri: course.instructor_image }} 
+                                style={[styles.instructorImage, { 
+                                  width: isSmallScreen ? 36 : 44,
+                                  height: isSmallScreen ? 36 : 44,
+                                  borderRadius: isSmallScreen ? 18 : 22
+                                }]}
+                              />
+                            ) : (
+                              <View style={[styles.instructorImagePlaceholder, { 
+                                width: isSmallScreen ? 32 : 40,
+                                height: isSmallScreen ? 32 : 40,
+                                borderRadius: isSmallScreen ? 16 : 20
+                              }]}>
+                                <Ionicons name="person" size={isSmallScreen ? 16 : 20} color="#666" />
+                              </View>
+                            )}
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.instructorLabel, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                Instructor
+                              </Text>
+                              <Text style={[styles.instructorName, { fontSize: isSmallScreen ? 14 : 16 }]} numberOfLines={1}>
+                                {course.instructor}
+                              </Text>
+                            </View>
+                          </View>
+                          
+                          <TouchableOpacity 
+                            style={styles.viewButton}
+                            onPress={() => handleCourseViewPress(course)}
+                          >
+                            <Text style={[styles.viewButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                              View
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ));
+                  })()}
+                </View>
+              )}
+            </View>
+          )}
+        </>
+      ) : (
+        <></>
       )}
 
       {/* Payment Details Modal */}
@@ -995,12 +1327,14 @@ const PaymentManagementPage = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Payment Details</Text>
+              <View style={styles.modalTitleContainer}>
+                <Text style={styles.modalTitle}>Payment Details</Text>
+              </View>
               <TouchableOpacity
                 style={styles.modalCloseButton}
                 onPress={() => setModalVisible(false)}
               >
-                <Ionicons name="close" size={24} color="#9CA3AF" />
+                <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
 
@@ -1113,6 +1447,168 @@ const PaymentManagementPage = () => {
                     </Text>
                   </TouchableOpacity>
                 </View>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Months Selection Modal */}
+      <Modal
+        visible={monthsModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setMonthsModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <Text style={styles.modalTitle} numberOfLines={2}>
+                  Select Month - {selectedCourse?.full_name}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setMonthsModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.monthsGrid}>
+              {months.map((month) => (
+                <TouchableOpacity
+                  key={month}
+                  style={styles.monthCard}
+                  onPress={() => handleMonthPress(month)}
+                >
+                  <Text style={styles.monthText}>{month}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Payment History Modal */}
+      <Modal
+        visible={historyModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setHistoryModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleContainer}>
+                <Text style={styles.modalTitle} numberOfLines={2}>
+                  Payment History - {selectedCourse?.full_name} ({selectedMonth})
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setHistoryModalVisible(false);
+                  setSearchQuery("");
+                }}
+              >
+                <Ionicons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.searchContainer}>
+              <View style={styles.searchInputContainer}>
+                <Ionicons name="search" size={20} color="#9CA3AF" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search by name or email..."
+                  placeholderTextColor="#9CA3AF"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.clearSearchButton}
+                    onPress={() => setSearchQuery("")}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {historyLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#2E4064" />
+                <Text style={styles.loadingText}>Loading payment history...</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 40 }}>
+                {filteredPaymentHistory.length === 0 ? (
+                  <View style={styles.emptyState}>
+                    <Ionicons 
+                      name={searchQuery ? "search-outline" : "receipt-outline"} 
+                      size={60} 
+                      color="#666" 
+                    />
+                    <Text style={styles.emptyStateTitle}>
+                      {searchQuery ? "No Matching Results" : "No Payments Found"}
+                    </Text>
+                    <Text style={styles.emptyStateText}>
+                      {searchQuery 
+                        ? `No payments found matching "${searchQuery}"`
+                        : `No successful payments recorded for ${selectedMonth}`
+                      }
+                    </Text>
+                  </View>
+                ) : (
+                  <>
+                    {searchQuery && (
+                      <Text style={styles.searchResultsText}>
+                        Found {filteredPaymentHistory.length} result{filteredPaymentHistory.length !== 1 ? 's' : ''}
+                      </Text>
+                    )}
+                    {filteredPaymentHistory.map((payment, index) => (
+                      <View key={`${payment.user_id}-${payment.txn_id}`} style={styles.historyPaymentCard}>
+                        <View style={styles.historyCardHeader}>
+                          <Text style={styles.historyUserName}>{payment.user_name}</Text>
+                          <View style={[styles.statusBadge, { backgroundColor: "#D1FAE5" }]}>
+                            <Text style={[styles.statusText, { color: "#065F46" }]}>Success</Text>
+                          </View>
+                        </View>
+
+                        <View style={styles.historyDetailsContainer}>
+                          <View style={styles.historyDetailRow}>
+                            <Ionicons name="card-outline" size={16} color="#9CA3AF" />
+                            <Text style={styles.historyDetailText}>TXN ID: {payment.txn_id}</Text>
+                          </View>
+
+                          <View style={styles.historyDetailRow}>
+                            <Ionicons name="mail-outline" size={16} color="#9CA3AF" />
+                            <Text style={styles.historyDetailText}>{payment.email_id}</Text>
+                          </View>
+
+                          <View style={styles.historyDetailRow}>
+                            <Ionicons name="call-outline" size={16} color="#9CA3AF" />
+                            <Text style={styles.historyDetailText}>{payment.phone_number}</Text>
+                          </View>
+
+                          {payment.ss_uploaded_path && (
+                            <TouchableOpacity
+                              style={styles.viewScreenshotButton}
+                              onPress={() => Linking.openURL(payment.ss_uploaded_path)}
+                            >
+                              <Ionicons name="image-outline" size={16} color="#2E4064" />
+                              <Text style={styles.viewScreenshotText}>View Screenshot</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
               </ScrollView>
             )}
           </View>
@@ -1247,9 +1743,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   infoText: {
-    color: "#fff",
     marginLeft: 8,
     fontWeight: "500",
+    flex: 1,
+    flexWrap: 'wrap',
   },
   infoDateText: {
     color: "#9CA3AF",
@@ -1366,18 +1863,24 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: "#374151",
+    minHeight: 60,
   },
   modalTitle: {
     color: "#fff",
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "bold",
+    lineHeight: 24,
   },
   modalCloseButton: {
-    padding: 4,
+    padding: 8,
+    backgroundColor: '#BB2626',
+    borderRadius: 20,
+    marginLeft: 8,
+    flexShrink: 0,
   },
   modalBody: {
     padding: 20,
@@ -1515,6 +2018,240 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
     marginLeft: 8,
+  },
+  // Payment History Styles
+  historyContainer: {
+    flex: 1,
+  },
+  coursesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    paddingHorizontal: 5,
+    marginTop: 16,
+  },
+  courseCard: {
+    margin: 8,
+    padding: 16,
+    borderRadius: 12,
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    marginBottom: 16,
+    maxWidth: 400, // Prevent cards from becoming too wide on large screens
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  codenameTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    maxWidth: '60%',
+  },
+  codenameText: {
+    fontWeight: 'bold',
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  courseTitle: {
+    fontWeight: 'bold',
+    color: 'black',
+    lineHeight: 22,
+    marginBottom: 12,
+  },
+  courseInfo: {
+    marginBottom: 16,
+  },
+  instructorSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginTop: 'auto',
+  },
+  instructorInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
+  instructorImage: {
+    marginRight: 12,
+  },
+  instructorImagePlaceholder: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  instructorLabel: {
+    color: 'black',
+    marginBottom: 2,
+  },
+  instructorName: {
+    fontWeight: '600',
+    color: 'black',
+  },
+  viewButton: {
+    backgroundColor: '#FF5734',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'black',
+  },
+  viewButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+    paddingVertical: 60,
+  },
+  emptyStateTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#666',
+    marginTop: 20,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#888',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  // Months Grid Styles
+  monthsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around',
+    padding: 20,
+  },
+  monthCard: {
+    width: '22%',
+    minWidth: 80,
+    aspectRatio: 1,
+    backgroundColor: '#2E4064',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  monthText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  // Payment History Modal Styles
+  historyPaymentCard: {
+    backgroundColor: '#1F2937',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#374151',
+  },
+  historyCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  historyUserName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#fff',
+    flex: 1,
+  },
+  historyDetailsContainer: {
+    marginTop: 8,
+  },
+  historyDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  historyDetailText: {
+    color: '#D1D5DB',
+    fontSize: 14,
+    marginLeft: 8,
+    flex: 1,
+  },
+  viewScreenshotButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E5E7EB',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginTop: 8,
+  },
+  viewScreenshotText: {
+    color: '#2E4064',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalTitleContainer: {
+    flex: 1,
+    marginRight: 12,
+  },
+  searchContainer: {
+    padding: 16,
+    paddingTop: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#374151',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#4B5563',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    color: '#fff',
+    fontSize: 16,
+  },
+  clearSearchButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  searchResultsText: {
+    color: '#9CA3AF',
+    fontSize: 14,
+    fontStyle: 'italic',
+    marginBottom: 16,
+    textAlign: 'center',
   },
 });
 
