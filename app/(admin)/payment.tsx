@@ -8,6 +8,8 @@ import {
   Alert,
   Dimensions,
   Image,
+  Linking,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -24,6 +26,20 @@ interface PaymentInfo {
   created_at: string;
 }
 
+interface PendingPayment {
+  user_id: string;
+  txn_id: string;
+  ss_uploaded_path: string;
+  email_id: string;
+  phone_number: string;
+  status: string;
+  course_id: string;
+  course_name: string;
+  month: string;
+  user_name: string;
+  user_role: string;
+}
+
 const PaymentManagementPage = () => {
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,6 +51,18 @@ const PaymentManagementPage = () => {
   const [upiId, setUpiId] = useState("");
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [pickedQrImage, setPickedQrImage] = useState<string | null>(null);
+
+  // Pending payments state
+  const [pendingPayments, setPendingPayments] = useState<PendingPayment[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [selectedTab, setSelectedTab] = useState<"config" | "pending">(
+    "config"
+  );
+  const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(
+    null
+  );
+  const [modalVisible, setModalVisible] = useState(false);
+  const [approving, setApproving] = useState(false);
 
   useEffect(() => {
     const onChange = (result: { window: any }) => {
@@ -82,9 +110,99 @@ const PaymentManagementPage = () => {
     }
   }, []);
 
+  const fetchPendingPayments = useCallback(async () => {
+    try {
+      setPendingLoading(true);
+
+      // Get all fees data
+      const { data: feesData, error: feesError } = await supabase
+        .from("fees")
+        .select(
+          "id, Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sept, Oct, Nov, Dec"
+        );
+
+      if (feesError) {
+        console.error("Error fetching fees:", feesError);
+        return;
+      }
+
+      // Get courses data for course names
+      const { data: coursesData, error: coursesError } = await supabase
+        .from("courses")
+        .select("id, full_name, fees_monthly");
+
+      if (coursesError) {
+        console.error("Error fetching courses:", coursesError);
+        return;
+      }
+
+      // Get users data for user names and roles
+      const { data: usersData, error: usersError } = await supabase
+        .from("users")
+        .select("id, name, role");
+
+      if (usersError) {
+        console.error("Error fetching users:", usersError);
+        return;
+      }
+
+      const pendingList: PendingPayment[] = [];
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sept",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+
+      // Process each fee record
+      feesData?.forEach((fee) => {
+        const course = coursesData?.find((c) => c.id === fee.id);
+
+        months.forEach((month) => {
+          const monthData = fee[month as keyof typeof fee] as any[];
+          if (monthData && Array.isArray(monthData)) {
+            monthData.forEach((payment: any) => {
+              if (payment.status === "pending") {
+                const user = usersData?.find((u) => u.id === payment.user_id);
+                pendingList.push({
+                  user_id: payment.user_id,
+                  txn_id: payment.txn_id,
+                  ss_uploaded_path: payment.ss_uploaded_path,
+                  email_id: payment.email_id,
+                  phone_number: payment.phone_number,
+                  status: payment.status,
+                  course_id: fee.id,
+                  course_name: course?.full_name || "Unknown Course",
+                  month: month,
+                  user_name: user?.name || "Unknown User",
+                  user_role: user?.role || "unknown",
+                });
+              }
+            });
+          }
+        });
+      });
+
+      setPendingPayments(pendingList);
+    } catch (error) {
+      console.error("Error in fetchPendingPayments:", error);
+    } finally {
+      setPendingLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchPaymentInfo();
-  }, [fetchPaymentInfo]);
+    fetchPendingPayments();
+  }, [fetchPaymentInfo, fetchPendingPayments]);
 
   const uriToBlob = async (uri: string): Promise<ArrayBuffer> => {
     const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -269,6 +387,82 @@ const PaymentManagementPage = () => {
     }
   };
 
+  const approvePayment = async (payment: PendingPayment) => {
+    try {
+      setApproving(true);
+
+      // Update the payment status in fees table
+      const { data: feeData, error: fetchError } = await supabase
+        .from("fees")
+        .select(`"${payment.month}"`)
+        .eq("id", payment.course_id)
+        .single();
+
+      if (fetchError) {
+        console.error("Error fetching fee data:", fetchError);
+        Alert.alert("Error", "Failed to update payment status");
+        return;
+      }
+
+      const monthData = feeData[payment.month] as any[];
+      const updatedMonthData = monthData.map((p: any) => {
+        if (p.user_id === payment.user_id && p.txn_id === payment.txn_id) {
+          return { ...p, status: "success" };
+        }
+        return p;
+      });
+
+      // Update the fees table
+      const { error: updateError } = await supabase
+        .from("fees")
+        .update({ [payment.month]: updatedMonthData })
+        .eq("id", payment.course_id);
+
+      if (updateError) {
+        console.error("Error updating payment status:", updateError);
+        Alert.alert("Error", "Failed to update payment status");
+        return;
+      }
+
+      // Update user role if they are a guest
+      if (payment.user_role === "guest") {
+        const { error: userUpdateError } = await supabase
+          .from("users")
+          .update({ role: "student" })
+          .eq("id", payment.user_id);
+
+        if (userUpdateError) {
+          console.error("Error updating user role:", userUpdateError);
+          Alert.alert(
+            "Warning",
+            "Payment approved but failed to update user role"
+          );
+        }
+      }
+
+      Alert.alert("Success", "Payment approved successfully!", [
+        {
+          text: "OK",
+          onPress: () => {
+            setModalVisible(false);
+            setSelectedPayment(null);
+            fetchPendingPayments();
+          },
+        },
+      ]);
+    } catch (error) {
+      console.error("Error in approvePayment:", error);
+      Alert.alert("Error", "Failed to approve payment");
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const viewPaymentDetails = (payment: PendingPayment) => {
+    setSelectedPayment(payment);
+    setModalVisible(true);
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -286,168 +480,508 @@ const PaymentManagementPage = () => {
       contentContainerStyle={styles.contentContainer}
     >
       <Text style={[styles.title, { fontSize: isSmallScreen ? 24 : 28 }]}>
-        Payment Information
+        Payment Management
       </Text>
 
-      <Text style={[styles.subtitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
-        Configure payment details for student payments
-      </Text>
-
-      {/* Form Card */}
-      <View style={styles.formCard}>
-        {/* Phone Number */}
-        <View style={styles.inputContainer}>
-          <Text
-            style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}
-          >
-            Phone Number
-          </Text>
-          <TextInput
-            style={[styles.textInput, { fontSize: isSmallScreen ? 14 : 16 }]}
-            value={phoneNumber}
-            onChangeText={setPhoneNumber}
-            placeholder="Enter phone number"
-            placeholderTextColor="#9CA3AF"
-            keyboardType="phone-pad"
-          />
-        </View>
-
-        {/* UPI ID */}
-        <View style={styles.inputContainer}>
-          <Text
-            style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}
-          >
-            UPI ID
-          </Text>
-          <TextInput
-            style={[styles.textInput, { fontSize: isSmallScreen ? 14 : 16 }]}
-            value={upiId}
-            onChangeText={setUpiId}
-            placeholder="Enter UPI ID (e.g., user@paytm)"
-            placeholderTextColor="#9CA3AF"
-            autoCapitalize="none"
-          />
-        </View>
-
-        {/* QR Code Upload */}
-        <View style={styles.inputContainer}>
-          <Text
-            style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}
-          >
-            QR Code Image
-          </Text>
-
-          <TouchableOpacity onPress={pickQrImage} style={styles.uploadButton}>
-            <Ionicons name="cloud-upload-outline" size={24} color="#2E4064" />
-            <Text
-              style={[
-                styles.uploadButtonText,
-                { fontSize: isSmallScreen ? 14 : 16 },
-              ]}
-            >
-              {pickedQrImage || qrImage ? "Change QR Code" : "Upload QR Code"}
-            </Text>
-          </TouchableOpacity>
-
-          {(pickedQrImage || qrImage) && (
-            <View style={styles.imagePreview}>
-              <Image
-                source={{
-                  uri: pickedQrImage || qrImage || "",
-                }}
-                style={[
-                  styles.previewImage,
-                  {
-                    width: isSmallScreen ? 150 : 200,
-                    height: isSmallScreen ? 150 : 200,
-                  },
-                ]}
-              />
-              <TouchableOpacity
-                style={styles.removeImageButton}
-                onPress={() => {
-                  setPickedQrImage(null);
-                  if (!paymentInfo) {
-                    setQrImage(null);
-                  }
-                }}
-              >
-                <Ionicons name="close-circle" size={24} color="#EF4444" />
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Save Button */}
+      {/* Tab Navigation */}
+      <View style={styles.tabContainer}>
         <TouchableOpacity
-          style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-          onPress={handleSave}
-          disabled={saving}
+          style={[
+            styles.tabButton,
+            selectedTab === "config" && styles.activeTabButton,
+          ]}
+          onPress={() => setSelectedTab("config")}
         >
-          {saving ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Ionicons name="save-outline" size={20} color="#fff" />
-          )}
           <Text
             style={[
-              styles.saveButtonText,
+              styles.tabButtonText,
               { fontSize: isSmallScreen ? 14 : 16 },
+              selectedTab === "config" && styles.activeTabButtonText,
             ]}
           >
-            {saving
-              ? "Saving..."
-              : paymentInfo
-              ? "Update Information"
-              : "Save Information"}
+            Payment Config
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            selectedTab === "pending" && styles.activeTabButton,
+          ]}
+          onPress={() => setSelectedTab("pending")}
+        >
+          <Text
+            style={[
+              styles.tabButtonText,
+              { fontSize: isSmallScreen ? 14 : 16 },
+              selectedTab === "pending" && styles.activeTabButtonText,
+            ]}
+          >
+            Pending Payments ({pendingPayments.length})
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Current Info Display */}
-      {paymentInfo && (
-        <View style={styles.currentInfoCard}>
+      {selectedTab === "config" ? (
+        <>
           <Text
-            style={[
-              styles.currentInfoTitle,
-              { fontSize: isSmallScreen ? 16 : 18 },
-            ]}
+            style={[styles.subtitle, { fontSize: isSmallScreen ? 14 : 16 }]}
           >
-            Current Payment Information
+            Configure payment details for student payments
           </Text>
 
-          <View style={styles.infoRow}>
-            <Ionicons name="call-outline" size={16} color="#10B981" />
-            <Text
-              style={[styles.infoText, { fontSize: isSmallScreen ? 14 : 16 }]}
+          {/* Form Card */}
+          <View style={styles.formCard}>
+            {/* Phone Number */}
+            <View style={styles.inputContainer}>
+              <Text
+                style={[
+                  styles.inputLabel,
+                  { fontSize: isSmallScreen ? 14 : 16 },
+                ]}
+              >
+                Phone Number
+              </Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { fontSize: isSmallScreen ? 14 : 16 },
+                ]}
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                placeholder="Enter phone number"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="phone-pad"
+              />
+            </View>
+
+            {/* UPI ID */}
+            <View style={styles.inputContainer}>
+              <Text
+                style={[
+                  styles.inputLabel,
+                  { fontSize: isSmallScreen ? 14 : 16 },
+                ]}
+              >
+                UPI ID
+              </Text>
+              <TextInput
+                style={[
+                  styles.textInput,
+                  { fontSize: isSmallScreen ? 14 : 16 },
+                ]}
+                value={upiId}
+                onChangeText={setUpiId}
+                placeholder="Enter UPI ID (e.g., user@paytm)"
+                placeholderTextColor="#9CA3AF"
+                autoCapitalize="none"
+              />
+            </View>
+
+            {/* QR Code Upload */}
+            <View style={styles.inputContainer}>
+              <Text
+                style={[
+                  styles.inputLabel,
+                  { fontSize: isSmallScreen ? 14 : 16 },
+                ]}
+              >
+                QR Code Image
+              </Text>
+
+              <TouchableOpacity
+                onPress={pickQrImage}
+                style={styles.uploadButton}
+              >
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={24}
+                  color="#2E4064"
+                />
+                <Text
+                  style={[
+                    styles.uploadButtonText,
+                    { fontSize: isSmallScreen ? 14 : 16 },
+                  ]}
+                >
+                  {pickedQrImage || qrImage
+                    ? "Change QR Code"
+                    : "Upload QR Code"}
+                </Text>
+              </TouchableOpacity>
+
+              {(pickedQrImage || qrImage) && (
+                <View style={styles.imagePreview}>
+                  <Image
+                    source={{
+                      uri: pickedQrImage || qrImage || "",
+                    }}
+                    style={[
+                      styles.previewImage,
+                      {
+                        width: isSmallScreen ? 150 : 200,
+                        height: isSmallScreen ? 150 : 200,
+                      },
+                    ]}
+                  />
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={() => {
+                      setPickedQrImage(null);
+                      if (!paymentInfo) {
+                        setQrImage(null);
+                      }
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={24} color="#EF4444" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* Save Button */}
+            <TouchableOpacity
+              style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={saving}
             >
-              {paymentInfo.phone_number}
-            </Text>
+              {saving ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="save-outline" size={20} color="#fff" />
+              )}
+              <Text
+                style={[
+                  styles.saveButtonText,
+                  { fontSize: isSmallScreen ? 14 : 16 },
+                ]}
+              >
+                {saving
+                  ? "Saving..."
+                  : paymentInfo
+                  ? "Update Information"
+                  : "Save Information"}
+              </Text>
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.infoRow}>
-            <Ionicons name="card-outline" size={16} color="#10B981" />
-            <Text
-              style={[styles.infoText, { fontSize: isSmallScreen ? 14 : 16 }]}
-            >
-              {paymentInfo.upi_id}
-            </Text>
-          </View>
+          {/* Current Info Display */}
+          {paymentInfo && (
+            <View style={styles.currentInfoCard}>
+              <Text
+                style={[
+                  styles.currentInfoTitle,
+                  { fontSize: isSmallScreen ? 16 : 18 },
+                ]}
+              >
+                Current Payment Information
+              </Text>
 
-          <View style={styles.infoRow}>
-            <Ionicons name="time-outline" size={16} color="#9CA3AF" />
-            <Text
-              style={[
-                styles.infoDateText,
-                { fontSize: isSmallScreen ? 12 : 14 },
-              ]}
-            >
-              Last updated:{" "}
-              {new Date(paymentInfo.created_at).toLocaleDateString()}
-            </Text>
+              <View style={styles.infoRow}>
+                <Ionicons name="call-outline" size={16} color="#10B981" />
+                <Text
+                  style={[
+                    styles.infoText,
+                    { fontSize: isSmallScreen ? 14 : 16 },
+                  ]}
+                >
+                  {paymentInfo.phone_number}
+                </Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Ionicons name="card-outline" size={16} color="#10B981" />
+                <Text
+                  style={[
+                    styles.infoText,
+                    { fontSize: isSmallScreen ? 14 : 16 },
+                  ]}
+                >
+                  {paymentInfo.upi_id}
+                </Text>
+              </View>
+
+              <View style={styles.infoRow}>
+                <Ionicons name="time-outline" size={16} color="#9CA3AF" />
+                <Text
+                  style={[
+                    styles.infoDateText,
+                    { fontSize: isSmallScreen ? 12 : 14 },
+                  ]}
+                >
+                  Last updated:{" "}
+                  {new Date(paymentInfo.created_at).toLocaleDateString()}
+                </Text>
+              </View>
+            </View>
+          )}
+        </>
+      ) : (
+        <>
+          <Text
+            style={[styles.subtitle, { fontSize: isSmallScreen ? 14 : 16 }]}
+          >
+            Review and approve pending payments
+          </Text>
+
+          {pendingLoading ? (
+            <View style={styles.pendingLoadingContainer}>
+              <ActivityIndicator size="large" color="#2E4064" />
+              <Text style={styles.loadingText}>
+                Loading pending payments...
+              </Text>
+            </View>
+          ) : pendingPayments.length === 0 ? (
+            <View style={styles.noPendingContainer}>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={60}
+                color="#10B981"
+              />
+              <Text style={styles.noPendingText}>No pending payments</Text>
+            </View>
+          ) : (
+            <View style={styles.pendingPaymentsContainer}>
+              {pendingPayments.map((payment, index) => (
+                <View
+                  key={`${payment.user_id}-${payment.txn_id}`}
+                  style={styles.pendingPaymentCard}
+                >
+                  <View style={styles.pendingPaymentHeader}>
+                    <Text
+                      style={[
+                        styles.pendingPaymentTitle,
+                        { fontSize: isSmallScreen ? 16 : 18 },
+                      ]}
+                    >
+                      {payment.user_name}
+                    </Text>
+                    <View style={styles.pendingPaymentStatus}>
+                      <Text style={styles.pendingStatusText}>PENDING</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.pendingPaymentDetails}>
+                    <View style={styles.pendingDetailRow}>
+                      <Ionicons name="book-outline" size={16} color="#9CA3AF" />
+                      <Text
+                        style={[
+                          styles.pendingDetailText,
+                          { fontSize: isSmallScreen ? 14 : 16 },
+                        ]}
+                      >
+                        {payment.course_name}
+                      </Text>
+                    </View>
+
+                    <View style={styles.pendingDetailRow}>
+                      <Ionicons
+                        name="calendar-outline"
+                        size={16}
+                        color="#9CA3AF"
+                      />
+                      <Text
+                        style={[
+                          styles.pendingDetailText,
+                          { fontSize: isSmallScreen ? 14 : 16 },
+                        ]}
+                      >
+                        Payment for: {payment.month}
+                      </Text>
+                    </View>
+
+                    <View style={styles.pendingDetailRow}>
+                      <Ionicons name="card-outline" size={16} color="#9CA3AF" />
+                      <Text
+                        style={[
+                          styles.pendingDetailText,
+                          { fontSize: isSmallScreen ? 14 : 16 },
+                        ]}
+                      >
+                        TXN ID: {payment.txn_id}
+                      </Text>
+                    </View>
+
+                    <View style={styles.pendingDetailRow}>
+                      <Ionicons name="mail-outline" size={16} color="#9CA3AF" />
+                      <Text
+                        style={[
+                          styles.pendingDetailText,
+                          { fontSize: isSmallScreen ? 14 : 16 },
+                        ]}
+                      >
+                        {payment.email_id}
+                      </Text>
+                    </View>
+
+                    <View style={styles.pendingDetailRow}>
+                      <Ionicons name="call-outline" size={16} color="#9CA3AF" />
+                      <Text
+                        style={[
+                          styles.pendingDetailText,
+                          { fontSize: isSmallScreen ? 14 : 16 },
+                        ]}
+                      >
+                        {payment.phone_number}
+                      </Text>
+                    </View>
+
+                    {payment.user_role === "guest" && (
+                      <View style={styles.pendingDetailRow}>
+                        <Ionicons
+                          name="person-outline"
+                          size={16}
+                          color="#F59E0B"
+                        />
+                        <Text
+                          style={[
+                            styles.pendingDetailText,
+                            {
+                              fontSize: isSmallScreen ? 14 : 16,
+                              color: "#F59E0B",
+                            },
+                          ]}
+                        >
+                          Will be promoted to Student upon approval
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.viewDetailsButton}
+                    onPress={() => viewPaymentDetails(payment)}
+                  >
+                    <Ionicons name="eye-outline" size={20} color="#2E4064" />
+                    <Text
+                      style={[
+                        styles.viewDetailsButtonText,
+                        { fontSize: isSmallScreen ? 14 : 16 },
+                      ]}
+                    >
+                      View Details
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </>
+      )}
+
+      {/* Payment Details Modal */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Payment Details</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setModalVisible(false)}
+              >
+                <Ionicons name="close" size={24} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
+
+            {selectedPayment && (
+              <ScrollView style={styles.modalBody}>
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>
+                    Student Information
+                  </Text>
+                  <Text style={styles.modalText}>
+                    Name: {selectedPayment.user_name}
+                  </Text>
+                  <Text style={styles.modalText}>
+                    Email: {selectedPayment.email_id}
+                  </Text>
+                  <Text style={styles.modalText}>
+                    Phone: {selectedPayment.phone_number}
+                  </Text>
+                  <Text style={styles.modalText}>
+                    Current Role: {selectedPayment.user_role}
+                  </Text>
+                </View>
+
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>
+                    Course Information
+                  </Text>
+                  <Text style={styles.modalText}>
+                    Course: {selectedPayment.course_name}
+                  </Text>
+                  <Text style={styles.modalText}>
+                    Payment Month: {selectedPayment.month}
+                  </Text>
+                </View>
+
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>
+                    Payment Information
+                  </Text>
+                  <Text style={styles.modalText}>
+                    Transaction ID: {selectedPayment.txn_id}
+                  </Text>
+                  <Text style={styles.modalText}>
+                    Status: {selectedPayment.status}
+                  </Text>
+                </View>
+
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>
+                    Payment Screenshot
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.screenshotContainer}
+                    onPress={() =>
+                      Linking.openURL(selectedPayment.ss_uploaded_path)
+                    }
+                  >
+                    <Image
+                      source={{ uri: selectedPayment.ss_uploaded_path }}
+                      style={styles.screenshotImage}
+                    />
+                    <Text style={styles.screenshotText}>
+                      Tap to view full size
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.approveButton,
+                      approving && styles.approveButtonDisabled,
+                    ]}
+                    onPress={() => approvePayment(selectedPayment)}
+                    disabled={approving}
+                  >
+                    {approving ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Ionicons
+                        name="checkmark-outline"
+                        size={20}
+                        color="#fff"
+                      />
+                    )}
+                    <Text style={styles.approveButtonText}>
+                      {approving ? "Approving..." : "Approve Payment"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            )}
           </View>
         </View>
-      )}
+      </Modal>
+
+     
     </ScrollView>
   );
 };
@@ -581,6 +1115,247 @@ const styles = StyleSheet.create({
   },
   infoDateText: {
     color: "#9CA3AF",
+    marginLeft: 8,
+  },
+  // Tab styles
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "#1F2937",
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 20,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  activeTabButton: {
+    backgroundColor: "#2E4064",
+  },
+  tabButtonText: {
+    color: "#9CA3AF",
+    fontWeight: "600",
+  },
+  activeTabButtonText: {
+    color: "#fff",
+  },
+  // Pending payments styles
+  pendingLoadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: 200,
+  },
+  noPendingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+    backgroundColor: "#1F2937",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#374151",
+  },
+  noPendingText: {
+    color: "#9CA3AF",
+    fontSize: 18,
+    fontWeight: "600",
+    marginTop: 16,
+  },
+  pendingPaymentsContainer: {
+    gap: 16,
+  },
+  pendingPaymentTitle: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
+  pendingPaymentStatus: {
+    backgroundColor: "#F59E0B",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  pendingStatusText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  pendingPaymentDetails: {
+    gap: 8,
+    marginBottom: 16,
+  },
+  pendingDetailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  pendingDetailText: {
+    color: "#fff",
+    marginLeft: 8,
+    flex: 1,
+  },
+  viewDetailsButton: {
+    backgroundColor: "#374151",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#2E4064",
+  },
+  viewDetailsButtonText: {
+    color: "#2E4064",
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "#1F2937",
+    margin: 20,
+    borderRadius: 12,
+    maxHeight: "80%",
+    width: "90%",
+    maxWidth: 500,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#374151",
+  },
+  modalTitle: {
+    color: "#fff",
+    fontSize: 20,
+    fontWeight: "bold",
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+  },
+  modalSection: {
+    marginBottom: 20,
+  },
+  modalSectionTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "bold",
+    marginBottom: 8,
+  },
+  modalText: {
+    color: "#9CA3AF",
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  screenshotContainer: {
+    alignItems: "center",
+    backgroundColor: "#374151",
+    borderRadius: 8,
+    padding: 16,
+  },
+  screenshotImage: {
+    width: 200,
+    height: 300,
+    borderRadius: 8,
+    resizeMode: "contain",
+  },
+  screenshotText: {
+    color: "#9CA3AF",
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: "center",
+  },
+  modalActions: {
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#374151",
+  },
+  approveButton: {
+    backgroundColor: "#10B981",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    borderRadius: 8,
+  },
+  approveButtonDisabled: {
+    backgroundColor: "#6B7280",
+  },
+  approveButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  pendingPaymentsSection: {
+    backgroundColor: "#1F2937",
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#374151",
+    marginTop: 20,
+  },
+  sectionTitle: {
+    color: "#fff",
+    fontWeight: "bold",
+    marginBottom: 16,
+  },
+  // Additional pending payment styles
+  pendingPaymentCard: {
+    backgroundColor: "#1F2937",
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#374151",
+  },
+  pendingPaymentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  pendingInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  pendingLabel: {
+    color: "#9CA3AF",
+    fontWeight: "500",
+    marginRight: 8,
+  },
+  pendingValue: {
+    color: "#fff",
+    fontWeight: "500",
+  },
+  pendingActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 12,
+  },
+  detailsButton: {
+    backgroundColor: "#2E4064",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    borderRadius: 8,
+    flex: 1,
+  },
+  detailsButtonText: {
+    color: "#fff",
+    fontWeight: "600",
     marginLeft: 8,
   },
 });
