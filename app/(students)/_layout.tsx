@@ -87,14 +87,14 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
     );
   };
   return (
-    <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1 }}>
+    <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1, backgroundColor: '#29395A' }}>
       <View style={{ padding: 20, alignItems: 'center' }}>
         <Image
           source={require('../../assets/images/logo.png')}
-          style={{ width: 100, height: 100, marginBottom: 10 }}
+          style={{ width: 100, height: 100, marginBottom: 10, backgroundColor: '#fff', borderRadius: 50 }}
         />
         <View>
-          <Text style={{ fontSize: 20, fontWeight: 'bold' }}>Inside Inspiration Academy</Text>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: 'white' }}>Inside Inspiration Academy</Text>
         </View>
       </View>
       <View style={{ height: 40 }} />
@@ -106,8 +106,8 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
       <View style={{
         padding: 20,
         borderTopWidth: 1,
-        borderTopColor: '#ddd',
-        backgroundColor: '#f9f9f9'
+        borderRadius: 8,
+        backgroundColor: '#111827'
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
           {userData.user_image ? (
@@ -134,7 +134,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
               <Text style={{
                 fontSize: 20,
                 fontWeight: 'bold',
-                color: '#333'
+                color: '#fff'
               }}>
                 {userData.name && userData.name.length > 0 ? userData.name.charAt(0).toUpperCase() : 'U'}
               </Text>
@@ -145,19 +145,19 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
             <Text style={{
               fontSize: 16,
               fontWeight: 'bold',
-              color: '#333',
+              color: '#fff',
               marginBottom: 2
             }}>
               {userData.name ? userData.name : 'User'}
             </Text>
             <Text style={{
               fontSize: 14,
-              color: '#666'
+              color: '#fefefe'
             }} numberOfLines={1}>
               {userData.email ? userData.email : 'No email'}
             </Text>
           </View>
-          <SettingsIcon />
+          <SettingsIcon stroke="white" />
         </View>
 
         <TouchableOpacity
@@ -192,11 +192,11 @@ export default function StudentsLayout() {
           headerTitle: 'Inside Inspiration Academy',
           headerTitleAlign: 'center',
           drawerStyle: {
-            backgroundColor: '#f4f4f4',
+            backgroundColor: '#111827',
             width: '75%',
           },
           drawerActiveTintColor: '#FCCC42',
-          drawerInactiveTintColor: '#333',
+          drawerInactiveTintColor: '#fff',
           headerRight: () => (
             <TouchableOpacity
               style={{ marginRight: 16 }}
@@ -215,7 +215,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Home',
             drawerLabel: 'Home',
-            drawerIcon: () => <HomeIcon />
+            drawerIcon: () => <HomeIcon stroke="white"/>
           }}
         />
         <Drawer.Screen
@@ -223,7 +223,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Batches',
             drawerLabel: 'My Batches',
-            drawerIcon: () => <BatchesIcon />
+            drawerIcon: () => <BatchesIcon stroke="white"/>
           }}
         />
         <Drawer.Screen
@@ -231,7 +231,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Test Series',
             drawerLabel: 'Test Series',
-            drawerIcon: () => <TestSeriesIcon />
+            drawerIcon: () => <TestSeriesIcon stroke="white"/>
           }}
         />
         <Drawer.Screen
@@ -239,7 +239,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Coding League',
             drawerLabel: 'Coding League',
-            drawerIcon: () => <CodingLeagueIcon />
+            drawerIcon: () => <CodingLeagueIcon stroke="white"/>
           }}
         />
         <Drawer.Screen
@@ -247,7 +247,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Attendance',
             drawerLabel: 'My Attendance',
-            drawerIcon: () => <AttendanceIcon />
+            drawerIcon: () => <AttendanceIcon stroke="white"/>
           }}
         />
         <Drawer.Screen
@@ -255,7 +255,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Performance',
             drawerLabel: 'My Performance',
-            drawerIcon: () => <PerformanceIcon />
+            drawerIcon: () => <PerformanceIcon fill="white"/>
           }}
         />
         <Drawer.Screen
@@ -263,7 +263,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Payment',
             drawerLabel: 'Payment',
-            drawerIcon: () => <PaymentIcon />
+            drawerIcon: () => <PaymentIcon stroke="white"/>
           }}
         />
       </Drawer>

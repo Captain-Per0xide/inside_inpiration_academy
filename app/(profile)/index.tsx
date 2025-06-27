@@ -7,6 +7,7 @@ import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
+import { determineUserRoute } from '../../utils/routingUtils';
 
 import {
     ActivityIndicator,
@@ -292,14 +293,11 @@ export default function ProfilePage() {
                 setPickedImage(null); // Clear picked image since it's been uploaded
             }            const successMessage = imageUploadSuccess
                 ? 'Profile updated successfully!'
-                : 'Profile updated successfully! (Image upload failed, but your other changes were saved)';            // Determine redirect route based on user role
-            let redirectRoute: any = '/(guest)'; // default route
-            if (data.role === 'admin') {
-                redirectRoute = '/(admin)';
-            } else if (data.role === 'student') {
-                redirectRoute = '/(students)';
-            }
-            router.replace(redirectRoute);
+                : 'Profile updated successfully! (Image upload failed, but your other changes were saved)';
+
+            // Use the routing utility to determine the appropriate route
+            const redirectRoute = await determineUserRoute(id);
+            router.replace(redirectRoute as any);
 
             // Alert.alert('Success', successMessage, [
             //     {

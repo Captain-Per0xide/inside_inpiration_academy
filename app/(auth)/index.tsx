@@ -1,22 +1,23 @@
 // app/(auth)/index.tsx
+import { HelloWave } from '@/components/HelloWave';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Dimensions,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import tw from 'twrnc';
 import { supabase } from '../../lib/supabase';
-import { HelloWave } from '@/components/HelloWave';
+import { determineUserRoute } from '../../utils/routingUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -52,8 +53,15 @@ const AuthScreen = () => {
         if (error) {
           Alert.alert('Login Error', error.message);
         } else {
-          // Navigate to main app
-          router.replace('/(profile)');
+          // Get user ID and determine the appropriate route
+          const userId = data.user?.id;
+          if (userId) {
+            const route = await determineUserRoute(userId);
+            router.replace(route as any);
+          } else {
+            // Fallback to profile if no user ID
+            router.replace('/(profile)');
+          }
         }
       } else {
         // Sign up
@@ -121,7 +129,7 @@ const AuthScreen = () => {
             </View>
 
             {/* Form */}
-            <View style={tw`space-y-6 w-full max-w-md`}>
+            <View style={tw`w-full max-w-md`}>
               {/* Email Input */}
               
               <View>

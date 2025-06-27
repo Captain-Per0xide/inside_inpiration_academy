@@ -91,7 +91,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   };
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1, backgroundColor: '#29395A' }}>
-      <View style={{ padding: 20, alignItems: 'center' }}>
+      <View style={{ padding: 20, alignItems: 'center'  }}>
         <Image
           source={require('../../assets/images/logo.png')}
           style={{ width: 100, height: 100, marginBottom: 10, backgroundColor: '#fff', borderRadius: 50 }}

@@ -1,16 +1,17 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-  Dimensions,
-  FlatList,
-  Image,
-  SafeAreaView,
-  StatusBar,
-  Text,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    FlatList,
+    Image,
+    SafeAreaView,
+    StatusBar,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import tw from 'twrnc';
+import { authService } from '../services/authService';
 
 // Import images
 import onboarding1 from '../assets/images/onboarding_1-bg-removed.png';
@@ -82,8 +83,16 @@ const OnboardingScreen = () => {
     setCurrentSlideIndex(lastSlideIndex);
   };
 
-  const navigateToAuth = () => {
-    router.push('/(auth)');
+  const navigateToAuth = async () => {
+    try {
+      // Mark that user has seen onboarding
+      await authService.markOnboardingAsSeen();
+      router.push('/(auth)');
+    } catch (error) {
+      console.error('Error saving onboarding status:', error);
+      // Still navigate even if storage fails
+      router.push('/(auth)');
+    }
   };
 
   const Footer = () => {
