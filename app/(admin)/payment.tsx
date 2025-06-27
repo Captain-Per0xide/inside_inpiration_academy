@@ -458,6 +458,83 @@ const PaymentManagementPage = () => {
     }
   };
 
+  const rejectPayment = async (payment: PendingPayment) => {
+    try {
+      setApproving(true);
+
+      // Show confirmation dialog first
+      Alert.alert(
+        "Reject Payment",
+        `Are you sure you want to reject this payment from ${payment.user_name}? This action cannot be undone.`,
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: () => setApproving(false),
+          },
+          {
+            text: "Reject",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                // Fetch current month data from fees table
+                const { data: feeData, error: fetchError } = await supabase
+                  .from("fees")
+                  .select(`"${payment.month}"`)
+                  .eq("id", payment.course_id)
+                  .single();
+
+                if (fetchError) {
+                  console.error("Error fetching fee data:", fetchError);
+                  Alert.alert("Error", "Failed to reject payment");
+                  return;
+                }
+
+                const monthData = feeData[payment.month] as any[];
+
+                // Remove the specific payment entry from the array
+                const updatedMonthData = monthData.filter((p: any) =>
+                  !(p.user_id === payment.user_id && p.txn_id === payment.txn_id)
+                );
+
+                // Update the fees table with the filtered array
+                const { error: updateError } = await supabase
+                  .from("fees")
+                  .update({ [payment.month]: updatedMonthData })
+                  .eq("id", payment.course_id);
+
+                if (updateError) {
+                  console.error("Error updating fees table:", updateError);
+                  Alert.alert("Error", "Failed to reject payment");
+                  return;
+                }
+
+                Alert.alert("Success", "Payment rejected and removed successfully!", [
+                  {
+                    text: "OK",
+                    onPress: () => {
+                      setModalVisible(false);
+                      setSelectedPayment(null);
+                      fetchPendingPayments();
+                    },
+                  },
+                ]);
+              } catch (error) {
+                console.error("Error in reject payment process:", error);
+                Alert.alert("Error", "Failed to reject payment");
+              } finally {
+                setApproving(false);
+              }
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error("Error in rejectPayment:", error);
+      setApproving(false);
+    }
+  };
+
   const viewPaymentDetails = (payment: PendingPayment) => {
     setSelectedPayment(payment);
     setModalVisible(true);
@@ -856,7 +933,7 @@ const PaymentManagementPage = () => {
                     <Text
                       style={[
                         styles.viewDetailsButtonText,
-                        { fontSize: isSmallScreen ? 14 : 16 },
+                        { fontSize: isSmallScreen ? 16 : 18 },
                       ]}
                     >
                       View Details
@@ -889,7 +966,7 @@ const PaymentManagementPage = () => {
             </View>
 
             {selectedPayment && (
-              <ScrollView style={styles.modalBody}>
+              <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 40 }}>
                 <View style={styles.modalSection}>
                   <Text style={styles.modalSectionTitle}>
                     Student Information
@@ -953,6 +1030,28 @@ const PaymentManagementPage = () => {
                 </View>
 
                 <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[
+                      styles.rejectButton,
+                      approving && styles.rejectButtonDisabled,
+                    ]}
+                    onPress={() => rejectPayment(selectedPayment)}
+                    disabled={approving}
+                  >
+                    {approving ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Ionicons
+                        name="close-outline"
+                        size={20}
+                        color="#fff"
+                      />
+                    )}
+                    <Text style={styles.rejectButtonText}>
+                      {approving ? "Rejecting..." : "Reject Payment"}
+                    </Text>
+                  </TouchableOpacity>
+                  
                   <TouchableOpacity
                     style={[
                       styles.approveButton,
@@ -1196,7 +1295,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   viewDetailsButton: {
-    backgroundColor: "#374151",
+    backgroundColor: "#FF5734",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1206,7 +1305,7 @@ const styles = StyleSheet.create({
     borderColor: "#2E4064",
   },
   viewDetailsButtonText: {
-    color: "#2E4064",
+    color: "#000",
     fontWeight: "600",
     marginLeft: 8,
   },
@@ -1280,6 +1379,8 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     borderTopWidth: 1,
     borderTopColor: "#374151",
+    flexDirection: 'row',
+    gap: 12,
   },
   approveButton: {
     backgroundColor: "#10B981",
@@ -1288,11 +1389,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 16,
     borderRadius: 8,
+    flex: 1,
   },
   approveButtonDisabled: {
     backgroundColor: "#6B7280",
   },
   approveButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    marginLeft: 8,
+  },
+  rejectButton: {
+    backgroundColor: "#EF4444",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    borderRadius: 8,
+    flex: 1,
+  },
+  rejectButtonDisabled: {
+    backgroundColor: "#6B7280",
+  },
+  rejectButtonText: {
     color: "#fff",
     fontWeight: "600",
     marginLeft: 8,
