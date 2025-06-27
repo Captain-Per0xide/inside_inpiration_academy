@@ -66,7 +66,11 @@ export const determineUserRoute = async (userId: string): Promise<string> => {
     // Redirect based on user role
     if (userData.role === 'admin') {
       return '/(admin)';
-    } else if (userData.role === 'student') {
+    }
+    else if (userData.role === 'teacher') {
+      return '/(admin)';
+    }
+    else if (userData.role === 'student') {
       return '/(students)';
     } else {
       // Default or no role - go to guest

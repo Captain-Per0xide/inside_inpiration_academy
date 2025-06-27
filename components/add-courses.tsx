@@ -65,6 +65,7 @@ interface ColorPickerModalProps {
   onClose: () => void;
   onColorSelect: (color: string) => void;
   initialColor: string;
+  excludeColor?: string; // Color to exclude from selection
 }
 
 const ColorPickerModal: React.FC<ColorPickerModalProps> = ({
@@ -72,26 +73,56 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({
   onClose,
   onColorSelect,
   initialColor,
+  excludeColor,
 }) => {
   const [selectedColor, setSelectedColor] = useState(initialColor);
 
   const presetColors = [
-    "#FF6B6B",
-    "#4ECDC4",
-    "#45B7D1",
-    "#96CEB4",
-    "#FFEAA7",
-    "#DDA0DD",
-    "#98D8C8",
-    "#F7DC6F",
-    "#BB8FCE",
-    "#85C1E9",
-    "#F8C471",
-    "#82E0AA",
-    "#F1948A",
-    "#85929E",
-    "#D7BDE2",
+    // Reds
+    "#FF6B6B", "#FF5733", "#E74C3C", "#C0392B", "#8E44AD", "#922B21",
+    "#F1948A", "#EC7063", "#CD6155", "#A93226", "#FF4757", "#FF3838",
+    "#DC143C", "#B22222", "#8B0000", "#FF1744", "#D50000", "#B71C1C",
+    
+    // Oranges
+    "#F39C12", "#E67E22", "#D35400", "#FF7043", "#FF5722", "#F4511E",
+    "#FF8A65", "#FFAB40", "#FF9800", "#FB8C00", "#F57C00", "#E65100",
+    "#FF6F00", "#FF8F00", "#FFA000", "#FFB300", "#FFC107", "#FFCA28",
+    
+    // Yellows
+    "#FFEAA7", "#F7DC6F", "#F1C40F", "#F39800", "#FDD835", "#FFEB3B",
+    "#FFEE58", "#FFF176", "#FFF59D", "#FFF9C4", "#FFFDE7", "#F8BBD9",
+    "#F5B041", "#F8C471", "#FCDC00", "#FFD700", "#FFFF00", "#FFFFE0",
+    
+    // Greens
+    "#96CEB4", "#82E0AA", "#58D68D", "#52C41A", "#389E0D", "#237804",
+    "#135200", "#52C41A", "#73D13D", "#95DE64", "#B7EB8F", "#D9F7BE",
+    "#4CAF50", "#66BB6A", "#81C784", "#A5D6A7", "#C8E6C9", "#E8F5E8",
+    
+    // Blues
+    "#4ECDC4", "#45B7D1", "#85C1E9", "#5DADE2", "#3498DB", "#2980B9",
+    "#2471A3", "#1B4F72", "#2196F3", "#42A5F5", "#64B5F6", "#90CAF9",
+    "#BBDEFB", "#E3F2FD", "#03A9F4", "#29B6F6", "#4FC3F7", "#81D4FA",
+    
+    // Purples
+    "#DDA0DD", "#BB8FCE", "#A569BD", "#8E44AD", "#7B68EE", "#6A5ACD",
+    "#483D8B", "#4B0082", "#9C27B0", "#AB47BC", "#BA68C8", "#CE93D8",
+    "#E1BEE7", "#F3E5F5", "#673AB7", "#7986CB", "#9575CD", "#B39DDB",
+    
+    // Pinks
+    "#F8BBD9", "#F48FB1", "#F06292", "#EC407A", "#E91E63", "#C2185B",
+    "#AD1457", "#880E4F", "#FF4081", "#FF80AB", "#FFAB91", "#FFCDD2",
+    "#FCE4EC", "#F8BBD9", "#E1BEE7", "#D1C4E9", "#C5CAE9", "#BBDEFB",
+    
+    // Grays
+    "#85929E", "#95A5A6", "#BDC3C7", "#D5DBDB", "#EAEDED", "#F8F9FA",
+    "#212529", "#343A40", "#495057", "#6C757D", "#ADB5BD", "#CED4DA",
+    "#DEE2E6", "#E9ECEF", "#F8F9FA", "#FFFFFF", "#000000", "#2C3E50"
   ];
+
+  // Filter out the excluded color
+  const availableColors = excludeColor 
+    ? presetColors.filter(color => color !== excludeColor)
+    : presetColors;
 
   const handleColorConfirm = () => {
     onColorSelect(selectedColor);
@@ -122,8 +153,13 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({
           >
             <View style={colorPickerStyles.presetsContainer}>
               <Text style={colorPickerStyles.sectionTitle}>Preset Colors</Text>
+              {excludeColor && (
+                <Text style={colorPickerStyles.excludeHint}>
+                  Note: Some colors are hidden to avoid duplication with other fields
+                </Text>
+              )}
               <View style={colorPickerStyles.presetColors}>
-                {presetColors.map((color, index) => (
+                {availableColors.map((color, index) => (
                   <TouchableOpacity
                     key={index}
                     style={[
@@ -333,6 +369,15 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
 
   const openColorPicker = (field: "codenameColor" | "fullNameColor") => {
     setColorPickerState({ visible: true, field });
+  };
+
+  const getExcludeColor = (field: "codenameColor" | "fullNameColor" | null): string | undefined => {
+    if (field === "codenameColor") {
+      return formData.fullNameColor;
+    } else if (field === "fullNameColor") {
+      return formData.codenameColor;
+    }
+    return undefined;
   };
 
   const handleColorSelect = (color: string) => {
@@ -1187,6 +1232,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                 ? formData[colorPickerState.field]
                 : "#FF6B6B"
             }
+            excludeColor={getExcludeColor(colorPickerState.field)}
           />
           <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
             <Text style={styles.submitButtonText}>Submit</Text>
@@ -1800,6 +1846,13 @@ const colorPickerStyles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
     marginBottom: 10,
+  },
+  excludeHint: {
+    fontSize: 12,
+    color: "#666",
+    marginBottom: 10,
+    fontStyle: "italic",
+    textAlign: "center",
   },
   presetColors: {
     flexDirection: "row",
