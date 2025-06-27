@@ -3,21 +3,20 @@ import { HelloWave } from '@/components/HelloWave';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    Alert,
-    Dimensions,
-    KeyboardAvoidingView,
-    Platform,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import tw from 'twrnc';
 import { supabase } from '../../lib/supabase';
-import { determineUserRoute } from '../../utils/routingUtils';
 
 const { width, height } = Dimensions.get('window');
 
@@ -53,15 +52,8 @@ const AuthScreen = () => {
         if (error) {
           Alert.alert('Login Error', error.message);
         } else {
-          // Get user ID and determine the appropriate route
-          const userId = data.user?.id;
-          if (userId) {
-            const route = await determineUserRoute(userId);
-            router.replace(route as any);
-          } else {
-            // Fallback to profile if no user ID
-            router.replace('/(profile)');
-          }
+          // Always redirect to profile first to check completion
+          router.replace('/(profile)');
         }
       } else {
         // Sign up

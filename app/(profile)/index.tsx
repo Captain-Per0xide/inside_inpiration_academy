@@ -7,7 +7,7 @@ import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { determineUserRoute } from '../../utils/routingUtils';
+import { determineUserRoute, isProfileComplete } from '../../utils/routingUtils';
 
 import {
     ActivityIndicator,
@@ -58,7 +58,22 @@ export default function ProfilePage() {
         };
         loadUserEmail();
         fetchUserData();
-    }, []); const fetchUserData = async () => {
+    }, []);
+
+    const checkAndRedirectIfComplete = async () => {
+        try {
+            const id = await authService.getCurrentUserUID();
+            if (!id) return;
+
+            const profileComplete = await isProfileComplete(id);
+            if (profileComplete) {
+                const route = await determineUserRoute(id);
+                router.replace(route as any);
+            }
+        } catch (error) {
+            console.error('Error checking profile completion:', error);
+        }
+    }; const fetchUserData = async () => {
         setIsLoading(true);
 
         try {
@@ -95,6 +110,9 @@ export default function ProfilePage() {
                 if (data.enrollment_date) {
                     setEnrollDate(new Date(data.enrollment_date));
                 }
+
+                // Check if profile is complete and redirect if it is
+                await checkAndRedirectIfComplete();
             } else {
                 // If no user data exists, create initial record with current user's email
                 const email = await authService.getCurrentUserEmail();
@@ -214,6 +232,9 @@ export default function ProfilePage() {
         }
         if (!formData.univ_name?.trim()) {
             errors.push('University name is required');
+        }
+        if (!selectedGender || selectedGender.trim() === '') {
+            errors.push('Gender is required');
         }
 
         if (errors.length > 0) {
@@ -385,9 +406,11 @@ export default function ProfilePage() {
                 <ActivityIndicator size="large" color="#007AFF" />
             </View>
         );
-    } return (
+    }    return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-            <Text style={styles.welcomeText}>Welcome {userEmail}</Text>
+            <Text style={styles.welcomeText}>Complete Your Profile</Text>
+            <Text style={styles.subtitleText}>Please fill in all required fields to continue</Text>
+            
             <TouchableOpacity onPress={testAuth} style={styles.testButton}>
                 <Text style={styles.testButtonText}>Test Auth</Text>
             </TouchableOpacity>
@@ -417,14 +440,16 @@ export default function ProfilePage() {
             <View style={styles.form}>
                 <TextInput
                     style={styles.input}
-                    placeholder="Full Name"
+                    placeholder="Full Name *"
+                    placeholderTextColor="#9CA3AF"
                     value={formData.name || ''}
                     onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
                 />
 
                 <TextInput
                     style={styles.input}
-                    placeholder="Phone Number"
+                    placeholder="Phone Number *"
+                    placeholderTextColor="#9CA3AF"
                     value={formData.phone_no || ''}
                     onChangeText={(text) => setFormData(prev => ({ ...prev, phone_no: text }))}
                     keyboardType="phone-pad"
@@ -432,7 +457,8 @@ export default function ProfilePage() {
 
                 <TextInput
                     style={styles.input}
-                    placeholder="Alternative Phone"
+                    placeholder="Alternative Phone (Optional)"
+                    placeholderTextColor="#9CA3AF"
                     value={formData.alternative_phone_no || ''}
                     onChangeText={(text) => setFormData(prev => ({ ...prev, alternative_phone_no: text }))}
                     keyboardType="phone-pad"
@@ -440,7 +466,8 @@ export default function ProfilePage() {
 
                 <TextInput
                     style={styles.input}
-                    placeholder="Address"
+                    placeholder="Address *"
+                    placeholderTextColor="#9CA3AF"
                     value={formData.address || ''}
                     onChangeText={(text) => setFormData(prev => ({ ...prev, address: text }))}
                     multiline
@@ -451,14 +478,15 @@ export default function ProfilePage() {
                     onPress={() => setShowDobPicker(true)}
                 >
                     <Text style={formData.dob ? styles.dateText : styles.placeholderText}>
-                        {formData.dob || 'Date of Birth'}
+                        {formData.dob || 'Date of Birth *'}
                     </Text>
                     <Ionicons name="calendar" size={20} color="#666" />
                 </TouchableOpacity>
 
                 <TextInput
                     style={styles.input}
-                    placeholder="University Name"
+                    placeholder="University Name *"
+                    placeholderTextColor="#9CA3AF"
                     value={formData.univ_name || ''}
                     onChangeText={(text) => setFormData(prev => ({ ...prev, univ_name: text }))}
                 />
@@ -468,20 +496,22 @@ export default function ProfilePage() {
                     onPress={() => setShowEnrollPicker(true)}
                 >
                     <Text style={formData.enrollment_date ? styles.dateText : styles.placeholderText}>
-                        {formData.enrollment_date || 'Enrollment Date'}
+                        {formData.enrollment_date || 'Enrollment Date (Optional)'}
                     </Text>
                     <Ionicons name="calendar" size={20} color="#666" />
                 </TouchableOpacity>
 
                 <TextInput
                     style={styles.input}
-                    placeholder="Current Semester"
+                    placeholder="Current Semester (Optional)"
+                    placeholderTextColor="#9CA3AF"
                     value={formData.current_sem?.toString() || ''}
                     onChangeText={(text) => setFormData(prev => ({ ...prev, current_sem: parseInt(text) || undefined }))}
                     keyboardType="numeric"
                 />
 
                 <View style={styles.pickerContainer}>
+                    <Text style={styles.pickerLabel}>Gender *</Text>
                     <Picker
                         selectedValue={selectedGender}
                         onValueChange={(itemValue) => setSelectedGender(itemValue)}
@@ -498,7 +528,9 @@ export default function ProfilePage() {
                     onPress={submitProfile}
                     disabled={isLoading}
                 >
-                    <Text style={styles.submitButtonText}>Submit</Text>
+                    <Text style={styles.submitButtonText}>
+                        {isLoading ? 'Saving Profile...' : 'Complete Profile & Continue'}
+                    </Text>
                 </TouchableOpacity>
             </View>
 
@@ -539,11 +571,17 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-    }, welcomeText: {
+    },    welcomeText: {
         fontSize: 16,
         textAlign: 'center',
         marginBottom: 16,
         color: '#fff',
+    },
+    subtitleText: {
+        fontSize: 14,
+        textAlign: 'center',
+        marginBottom: 16,
+        color: '#9CA3AF',
     },
     testButton: {
         backgroundColor: '#28a745',
@@ -618,6 +656,14 @@ const styles = StyleSheet.create({
         borderColor: '#374151',
         borderRadius: 8,
         backgroundColor: '#111827',
+    },
+    pickerLabel: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
+        paddingHorizontal: 12,
+        paddingTop: 8,
+        marginBottom: -8,
     },
     picker: {
         height: 50,

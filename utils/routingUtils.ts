@@ -3,28 +3,64 @@ import { supabase } from '../lib/supabase';
 import { authService } from '../services/authService';
 
 /**
- * Determines the appropriate route for an authenticated user based on their profile and role
+ * Checks if user profile is complete based on required fields
+ * @param userId - The user's ID from authentication
+ * @returns True if profile is complete, false otherwise
+ */
+export const isProfileComplete = async (userId: string): Promise<boolean> => {
+  try {
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('name, phone_no, address, dob, univ_name, gender')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error || !userData) {
+      console.error('Error fetching user data for profile check:', error);
+      return false;
+    }
+
+    // Check if all required fields have data (not empty or null)
+    const requiredFields = ['name', 'phone_no', 'address', 'dob', 'univ_name', 'gender'];
+    
+    for (const field of requiredFields) {
+      const value = userData[field as keyof typeof userData];
+      if (!value || (typeof value === 'string' && value.trim() === '')) {
+        console.log(`Profile incomplete: missing ${field}`);
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error checking profile completion:', error);
+    return false;
+  }
+};
+
+/**
+ * Determines the appropriate route for an authenticated user based on their role
  * @param userId - The user's ID from authentication
  * @returns The route path to redirect to
  */
 export const determineUserRoute = async (userId: string): Promise<string> => {
   try {
-    // Fetch user data to determine role and profile completion
+    // Fetch user data to determine role
     const { data: userData, error } = await supabase
       .from('users')
-      .select('role, name')
+      .select('role')
       .eq('id', userId)
       .maybeSingle();
 
     if (error) {
       console.error('Error fetching user data:', error);
-      // If error fetching user data, go to profile to complete setup
-      return '/(profile)';
+      // If error fetching user data, go to guest
+      return '/(guest)';
     }
 
-    if (!userData || !userData.name) {
-      // User exists but profile incomplete - go to profile
-      return '/(profile)';
+    if (!userData) {
+      // User doesn't exist in database, go to guest
+      return '/(guest)';
     }
 
     // Redirect based on user role
@@ -38,8 +74,8 @@ export const determineUserRoute = async (userId: string): Promise<string> => {
     }
   } catch (error) {
     console.error('Error determining user route:', error);
-    // On error, default to profile setup
-    return '/(profile)';
+    // On error, default to guest
+    return '/(guest)';
   }
 };
 
@@ -65,15 +101,8 @@ export const determineAppRoute = async (): Promise<string> => {
       return '/(auth)';
     }
 
-    // User is authenticated - get their route based on profile and role
-    const userId = await authService.getCurrentUserUID();
-    
-    if (!userId) {
-      // No user ID found - go to auth
-      return '/(auth)';
-    }
-
-    return await determineUserRoute(userId);
+    // User is authenticated - go to profile first for completion check
+    return '/(profile)';
   } catch (error) {
     console.error('Error determining app route:', error);
     // On error, default to onboarding
