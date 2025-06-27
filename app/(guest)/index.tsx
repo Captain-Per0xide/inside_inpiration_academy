@@ -38,6 +38,90 @@ const GuestCourses = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [screenData, setScreenData] = useState(Dimensions.get("window"));
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [pendingPayments, setPendingPayments] = useState<Set<string>>(
+    new Set()
+  );
+
+  // Get current month name
+  const getCurrentMonthName = useCallback(() => {
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sept",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    return months[new Date().getMonth()];
+  }, []);
+
+  const fetchUserSession = useCallback(async () => {
+    try {
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
+
+      if (sessionError || !session?.user) {
+        setCurrentUserId(null);
+        return null;
+      }
+
+      setCurrentUserId(session.user.id);
+      return session.user.id;
+    } catch (error) {
+      console.error("Error fetching user session:", error);
+      setCurrentUserId(null);
+      return null;
+    }
+  }, []);
+
+  const checkPendingPayments = useCallback(
+    async (userId: string) => {
+      try {
+        const currentMonth = getCurrentMonthName();
+
+        // Fetch all fees records to check for pending payments
+        const { data: feesData, error } = await supabase
+          .from("fees")
+          .select(`id, "${currentMonth}"`);
+
+        if (error) {
+          console.error("Error fetching fees data:", error);
+          return;
+        }
+
+        const pendingCourseIds = new Set<string>();
+
+        feesData?.forEach((feeRecord) => {
+          const monthData = feeRecord[currentMonth];
+          if (monthData && Array.isArray(monthData)) {
+            // Check if user has a pending payment for this course
+            const userPayment = monthData.find(
+              (payment: any) =>
+                payment.user_id === userId && payment.status === "pending"
+            );
+
+            if (userPayment) {
+              pendingCourseIds.add(feeRecord.id);
+            }
+          }
+        });
+
+        setPendingPayments(pendingCourseIds);
+      } catch (error) {
+        console.error("Error checking pending payments:", error);
+      }
+    },
+    [getCurrentMonthName]
+  );
 
   const fetchCourses = useCallback(async () => {
     try {
@@ -53,6 +137,12 @@ const GuestCourses = () => {
       }
 
       setCourses(data || []);
+
+      // Check for pending payments if user is logged in
+      const userId = await fetchUserSession();
+      if (userId) {
+        await checkPendingPayments(userId);
+      }
     } catch (error) {
       console.error("Error in fetchCourses:", error);
       Alert.alert("Error", "Failed to fetch courses");
@@ -60,7 +150,7 @@ const GuestCourses = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [fetchUserSession, checkPendingPayments]);
 
   useEffect(() => {
     fetchCourses();
@@ -81,6 +171,25 @@ const GuestCourses = () => {
   }, [fetchCourses]);
 
   const handleBuyNow = (course: Course) => {
+    // Check if there's a pending payment for this course
+    if (pendingPayments.has(course.id)) {
+      Alert.alert(
+        "Pending Payment",
+        "You already have a pending payment for this course. Please wait for verification before making another payment.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    // Check if user is logged in
+    if (!currentUserId) {
+      Alert.alert("Login Required", "Please login to purchase a course.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Login", onPress: () => router.push("/(auth)") },
+      ]);
+      return;
+    }
+
     // Navigate to payment page with course ID
     router.push({
       pathname: "/(guest)/payment",
@@ -113,6 +222,7 @@ const GuestCourses = () => {
   const renderCourseCard = ({ item }: { item: Course }) => {
     const isSmallScreen = screenData.width < 600;
     const isMediumScreen = screenData.width < 900;
+    const hasPendingPayment = pendingPayments.has(item.id);
 
     return (
       <View
@@ -256,17 +366,40 @@ const GuestCourses = () => {
           </View>
 
           <TouchableOpacity
-            style={styles.buyNowButton}
+            style={[
+              hasPendingPayment ? styles.pendingButton : styles.buyNowButton,
+              hasPendingPayment && styles.disabledButton,
+            ]}
             onPress={() => handleBuyNow(item)}
+            disabled={hasPendingPayment}
           >
-            <Text
-              style={[
-                styles.buyNowButtonText,
-                { fontSize: isSmallScreen ? 14 : 16 },
-              ]}
-            >
-              Buy Now
-            </Text>
+            {hasPendingPayment ? (
+              <>
+                <Ionicons
+                  name="time-outline"
+                  size={isSmallScreen ? 12 : 14}
+                  color="#6B7280"
+                  style={{ marginRight: 4 }}
+                />
+                <Text
+                  style={[
+                    styles.pendingButtonText,
+                    { fontSize: isSmallScreen ? 12 : 14 },
+                  ]}
+                >
+                  Waiting for verification
+                </Text>
+              </>
+            ) : (
+              <Text
+                style={[
+                  styles.buyNowButtonText,
+                  { fontSize: isSmallScreen ? 14 : 16 },
+                ]}
+              >
+                Buy Now
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -427,6 +560,24 @@ const styles = StyleSheet.create({
   buyNowButtonText: {
     color: "#fff",
     fontWeight: "600",
+  },
+  pendingButton: {
+    backgroundColor: "#E5E7EB",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#9CA3AF",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pendingButtonText: {
+    color: "#6B7280",
+    fontWeight: "600",
+  },
+  disabledButton: {
+    opacity: 0.7,
   },
   courseTitle: {
     fontWeight: "bold",

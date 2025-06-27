@@ -37,6 +37,13 @@ interface PaymentComponentProps {
   onBack?: () => void;
 }
 
+interface PaymentInfo {
+  id: number;
+  phone_number: string;
+  upi_id: string;
+  qr_code: string;
+}
+
 const PaymentComponent: React.FC<PaymentComponentProps> = ({
   courseId,
   onPaymentSuccess,
@@ -44,6 +51,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
 }) => {
   const [course, setCourse] = useState<Course | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [screenData, setScreenData] = useState(Dimensions.get("window"));
@@ -56,12 +64,6 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
   const [studentName, setStudentName] = useState("");
   const [studentEmail, setStudentEmail] = useState("");
   const [studentPhone, setStudentPhone] = useState("");
-
-  // Payment details
-  const UPI_ID = "inspiration@paytm";
-  const PHONE_NUMBER = "+91 9876543210";
-  const QR_CODE_URL =
-    "https://via.placeholder.com/200x200/2E4064/FFFFFF?text=QR+CODE";
 
   // Get current month name
   const getCurrentMonthName = () => {
@@ -165,11 +167,37 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
     }
   }, [courseId, onBack]);
 
+  const fetchPaymentInfo = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from("payment_info")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error && error.code !== "PGRST116") {
+        console.error("Error fetching payment info:", error);
+        // Don't show alert, just use default values
+        return null;
+      }
+
+      return data;
+    } catch (error) {
+      console.error("Error in fetchPaymentInfo:", error);
+      return null;
+    }
+  }, []);
+
   const initializeComponent = useCallback(async () => {
     setLoading(true);
 
-    // Fetch user session and course details
-    const [userData] = await Promise.all([fetchUserSession(), fetchCourse()]);
+    // Fetch user session, course details, and payment info
+    const [userData, , paymentData] = await Promise.all([
+      fetchUserSession(),
+      fetchCourse(),
+      fetchPaymentInfo(),
+    ]);
 
     if (userData) {
       setUser(userData);
@@ -179,8 +207,12 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
       setStudentPhone(userData.phone_no);
     }
 
+    if (paymentData) {
+      setPaymentInfo(paymentData);
+    }
+
     setLoading(false);
-  }, [fetchUserSession, fetchCourse]);
+  }, [fetchUserSession, fetchCourse, fetchPaymentInfo]);
 
   useEffect(() => {
     initializeComponent();
@@ -494,7 +526,11 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
         {/* QR Code */}
         <View style={styles.qrContainer}>
           <Image
-            source={{ uri: QR_CODE_URL }}
+            source={{
+              uri:
+                paymentInfo?.qr_code ||
+                "https://via.placeholder.com/200x200/2E4064/FFFFFF?text=QR+CODE",
+            }}
             style={[
               styles.qrCode,
               {
@@ -524,7 +560,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
                   { fontSize: isSmallScreen ? 14 : 16 },
                 ]}
               >
-                {UPI_ID}
+                {paymentInfo?.upi_id || "inspiration@paytm"}
               </Text>
             </View>
           </View>
@@ -546,7 +582,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
                   { fontSize: isSmallScreen ? 14 : 16 },
                 ]}
               >
-                {PHONE_NUMBER}
+                {paymentInfo?.phone_number || "+91 9876543210"}
               </Text>
             </View>
           </View>
