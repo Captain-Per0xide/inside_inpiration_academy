@@ -450,6 +450,10 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
           {
             text: "OK",
             onPress: () => {
+              // Clear form data after successful submission
+              setTransactionId("");
+              setPaymentScreenshot(null);
+              
               onPaymentSuccess?.();
             },
           },

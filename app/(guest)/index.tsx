@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -169,6 +169,13 @@ const GuestCourses = () => {
   useEffect(() => {
     fetchCourses();
   }, [fetchCourses]);
+
+  // Refresh data when screen comes into focus (e.g., returning from payment)
+  useFocusEffect(
+    useCallback(() => {
+      fetchCourses();
+    }, [fetchCourses])
+  );
 
   useEffect(() => {
     const onChange = (result: { window: any }) => {

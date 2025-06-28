@@ -548,9 +548,15 @@ const PaymentManagementPage = () => {
       }
 
       const monthData = feeData[payment.month] as any[];
+      const currentTimestamp = new Date().toISOString();
+      
       const updatedMonthData = monthData.map((p: any) => {
         if (p.user_id === payment.user_id && p.txn_id === payment.txn_id) {
-          return { ...p, status: "success" };
+          return { 
+            ...p, 
+            status: "success",
+            approved_timestamp: currentTimestamp
+          };
         }
         return p;
       });
@@ -565,6 +571,46 @@ const PaymentManagementPage = () => {
         console.error("Error updating payment status:", updateError);
         Alert.alert("Error", "Failed to update payment status");
         return;
+      }
+
+      // Update enrolled_students in courses table
+      const { data: courseData, error: fetchCourseError } = await supabase
+        .from("courses")
+        .select("enrolled_students")
+        .eq("id", payment.course_id)
+        .single();
+
+      if (fetchCourseError) {
+        console.error("Error fetching course data:", fetchCourseError);
+        // Don't fail the approval if we can't update enrolled_students
+      } else {
+        const currentEnrolledStudents = courseData.enrolled_students || [];
+        
+        // Check if student is already enrolled
+        const isAlreadyEnrolled = currentEnrolledStudents.some(
+          (student: any) => student.user_id === payment.user_id
+        );
+
+        if (!isAlreadyEnrolled) {
+          // Add new student enrollment record
+          const newStudentRecord = {
+            user_id: payment.user_id,
+            approve_date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+            approving_time: new Date().toISOString() // Full timestamp
+          };
+
+          const updatedEnrolledStudents = [...currentEnrolledStudents, newStudentRecord];
+
+          const { error: updateCourseError } = await supabase
+            .from("courses")
+            .update({ enrolled_students: updatedEnrolledStudents })
+            .eq("id", payment.course_id);
+
+          if (updateCourseError) {
+            console.error("Error updating enrolled students:", updateCourseError);
+            // Don't fail the approval if we can't update enrolled_students
+          }
+        }
       }
 
       // Update user based on their current role

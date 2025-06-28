@@ -44,9 +44,7 @@ export default function ProfilePage() {
     const [pickedImage, setPickedImage] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [showDobPicker, setShowDobPicker] = useState<boolean>(false);
-    const [showEnrollPicker, setShowEnrollPicker] = useState<boolean>(false);
     const [dobDate, setDobDate] = useState<Date>(new Date(2006, 0, 1));
-    const [enrollDate, setEnrollDate] = useState<Date>(new Date());
 
     const genderOptions = ['Male', 'Female', 'Other'];
     const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -107,9 +105,6 @@ export default function ProfilePage() {
                 if (data.dob) {
                     setDobDate(new Date(data.dob));
                 }
-                if (data.enrollment_date) {
-                    setEnrollDate(new Date(data.enrollment_date));
-                }
 
                 // Check if profile is complete and redirect if it is
                 await checkAndRedirectIfComplete();
@@ -129,6 +124,7 @@ export default function ProfilePage() {
                         user_image: ''
                     };
                     setFormData(initialData);
+                    setSelectedGender('Other'); // Ensure Other is selected
                 }
             }
         } catch (error) {
@@ -287,7 +283,6 @@ export default function ProfilePage() {
                 address: formData.address?.trim(),
                 dob: formData.dob?.trim(),
                 univ_name: formData.univ_name?.trim(),
-                enrollment_date: formData.enrollment_date || null,
                 current_sem: formData.current_sem ? parseInt(formData.current_sem.toString()) : null,
                 gender: selectedGender,
                 user_image: uploadedImageUrl,
@@ -392,14 +387,6 @@ export default function ProfilePage() {
         }
     };
 
-    const onEnrollChange = (event: any, selectedDate?: Date) => {
-        setShowEnrollPicker(false);
-        if (selectedDate) {
-            setEnrollDate(selectedDate);
-            setFormData(prev => ({ ...prev, enrollment_date: formatDate(selectedDate) }));
-        }
-    };
-
     if (isLoading) {
         return (
             <View style={styles.loadingContainer}>
@@ -491,16 +478,6 @@ export default function ProfilePage() {
                     onChangeText={(text) => setFormData(prev => ({ ...prev, univ_name: text }))}
                 />
 
-                <TouchableOpacity
-                    style={styles.dateInput}
-                    onPress={() => setShowEnrollPicker(true)}
-                >
-                    <Text style={formData.enrollment_date ? styles.dateText : styles.placeholderText}>
-                        {formData.enrollment_date || 'Enrollment Date (Optional)'}
-                    </Text>
-                    <Ionicons name="calendar" size={20} color="#666" />
-                </TouchableOpacity>
-
                 <TextInput
                     style={styles.input}
                     placeholder="Current Semester (Optional)"
@@ -516,9 +493,15 @@ export default function ProfilePage() {
                         selectedValue={selectedGender}
                         onValueChange={(itemValue) => setSelectedGender(itemValue)}
                         style={styles.picker}
+                        dropdownIconColor="#fff"
                     >
                         {genderOptions.map((option) => (
-                            <Picker.Item key={option} label={option} value={option} style={{ color: '#fff' , backgroundColor: '#111827'}} />
+                            <Picker.Item 
+                                key={option} 
+                                label={option} 
+                                value={option} 
+                                style={{ color: '#fff', backgroundColor: '#1F2937' }} 
+                            />
                         ))}
                     </Picker>
                 </View>
@@ -540,17 +523,6 @@ export default function ProfilePage() {
                     mode="date"
                     display="default"
                     onChange={onDobChange}
-                    maximumDate={new Date()}
-                    minimumDate={new Date(1900, 0, 1)}
-                />
-            )}
-
-            {showEnrollPicker && (
-                <DateTimePicker
-                    value={enrollDate}
-                    mode="date"
-                    display="default"
-                    onChange={onEnrollChange}
                     maximumDate={new Date()}
                     minimumDate={new Date(1900, 0, 1)}
                 />
@@ -655,7 +627,7 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#374151',
         borderRadius: 8,
-        backgroundColor: '#111827',
+        backgroundColor: '#1F2937',
     },
     pickerLabel: {
         color: '#fff',
@@ -667,6 +639,7 @@ const styles = StyleSheet.create({
     },
     picker: {
         height: 50,
+        color: '#fff',
     },
     submitButton: {
         backgroundColor: '#007AFF',
