@@ -35,6 +35,12 @@ interface PaymentRecord {
     course_type?: string;
 }
 
+interface CoursePaymentStatus {
+    course_id: string;
+    month: string;
+    status: 'due' | 'success' | 'pending';
+}
+
 const PaymentScreen = () => {
     const [selectedTab, setSelectedTab] = useState<'payments' | 'history'>('payments');
     const [loading, setLoading] = useState(true);
@@ -43,6 +49,7 @@ const PaymentScreen = () => {
     const [enrolledCourses, setEnrolledCourses] = useState<Course[]>([]);
     const [paymentHistory, setPaymentHistory] = useState<PaymentRecord[]>([]);
     const [userInfo, setUserInfo] = useState<any>(null);
+    const [coursePaymentStatuses, setCoursePaymentStatuses] = useState<CoursePaymentStatus[]>([]);
     
     // Theme setup
     const colorScheme = useColorScheme();
@@ -60,6 +67,15 @@ const PaymentScreen = () => {
 
         const subscription = Dimensions.addEventListener("change", onChange);
         return () => subscription?.remove();
+    }, []);
+
+    // Get current month name
+    const getCurrentMonthName = useCallback(() => {
+        const months = [
+            'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+            'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'
+        ];
+        return months[new Date().getMonth()];
     }, []);
 
     const fetchUserInfo = useCallback(async () => {
@@ -81,6 +97,7 @@ const PaymentScreen = () => {
             setUserInfo(data);
             if (data.enrolled_courses && data.enrolled_courses.length > 0) {
                 await fetchEnrolledCourses(data.enrolled_courses);
+                await checkCoursePaymentStatuses(user.id, data.enrolled_courses);
                 await fetchPaymentHistory(user.id, data.enrolled_courses);
             }
         } catch (error) {
@@ -103,6 +120,71 @@ const PaymentScreen = () => {
             setEnrolledCourses(data || []);
         } catch (error) {
             console.error('Error in fetchEnrolledCourses:', error);
+        }
+    }, []);
+
+    const checkCoursePaymentStatuses = useCallback(async (userId: string, courseIds: string[]) => {
+        try {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+            const statuses: CoursePaymentStatus[] = [];
+
+            for (const courseId of courseIds) {
+                const { data: feeData, error } = await supabase
+                    .from('fees')
+                    .select('*')
+                    .eq('id', courseId)
+                    .single();
+
+                if (error || !feeData) {
+                    // If no fee record exists, all months are due
+                    months.forEach(month => {
+                        statuses.push({ 
+                            course_id: courseId, 
+                            month, 
+                            status: 'due' 
+                        });
+                    });
+                    continue;
+                }
+
+                // Check each month for payment status
+                months.forEach(month => {
+                    const monthData = feeData[month];
+                    
+                    if (!monthData || !Array.isArray(monthData)) {
+                        // If no payment data for this month, payment is due
+                        statuses.push({ 
+                            course_id: courseId, 
+                            month, 
+                            status: 'due' 
+                        });
+                        return;
+                    }
+
+                    // Check if user has any payment record for this month
+                    const userPayment = monthData.find((payment: any) => payment.user_id === userId);
+                    
+                    if (!userPayment) {
+                        // No payment record for this user in this month, payment is due
+                        statuses.push({ 
+                            course_id: courseId, 
+                            month, 
+                            status: 'due' 
+                        });
+                    } else {
+                        // User has a payment record, use its status
+                        statuses.push({ 
+                            course_id: courseId, 
+                            month, 
+                            status: userPayment.status 
+                        });
+                    }
+                });
+            }
+
+            setCoursePaymentStatuses(statuses);
+        } catch (error) {
+            console.error('Error in checkCoursePaymentStatuses:', error);
         }
     }, []);
 
@@ -191,6 +273,69 @@ const PaymentScreen = () => {
         return course.course_type === 'Core Curriculum' ? 'Monthly Fee:' : 'Total Fee:';
     };
 
+    const getCoursePaymentStatus = (courseId: string): 'due' | 'success' | 'pending' => {
+        const currentMonth = getCurrentMonthName();
+        const status = coursePaymentStatuses.find(s => s.course_id === courseId && s.month === currentMonth);
+        return status?.status || 'due';
+    };
+
+    const getDueMonthsForCourse = (courseId: string): string[] => {
+        return coursePaymentStatuses
+            .filter(s => s.course_id === courseId && s.status === 'due')
+            .map(s => s.month);
+    };
+
+    const getPendingMonthsForCourse = (courseId: string): string[] => {
+        return coursePaymentStatuses
+            .filter(s => s.course_id === courseId && s.status === 'pending')
+            .map(s => s.month);
+    };
+
+    const getPaymentButtonConfig = (course: Course) => {
+        const status = getCoursePaymentStatus(course.id);
+        const dueMonths = getDueMonthsForCourse(course.id);
+        const pendingMonths = getPendingMonthsForCourse(course.id);
+        const currentMonth = getCurrentMonthName();
+        
+        switch (status) {
+            case 'success':
+                return {
+                    text: `Paid for ${currentMonth}`,
+                    icon: 'checkmark-circle' as const,
+                    color: '#10B981',
+                    textColor: '#fff',
+                    disabled: true
+                };
+            case 'pending':
+                return {
+                    text: `${currentMonth} - Waiting for verification`,
+                    icon: 'time' as const,
+                    color: '#F59E0B',
+                    textColor: '#fff',
+                    disabled: true
+                };
+            case 'due':
+            default:
+                if (dueMonths.length > 1) {
+                    return {
+                        text: `Pay for ${currentMonth} (${dueMonths.length} months due)`,
+                        icon: 'card' as const,
+                        color: '#FF5734',
+                        textColor: '#fff',
+                        disabled: false
+                    };
+                } else {
+                    return {
+                        text: `Pay for ${currentMonth}`,
+                        icon: 'card' as const,
+                        color: '#FF5734',
+                        textColor: '#fff',
+                        disabled: false
+                    };
+                }
+        }
+    };
+
     const handleMakePayment = (course: Course) => {
         const fee = getCourseFee(course);
         const feeType = course.course_type === 'Core Curriculum' ? 'monthly' : 'total';
@@ -229,7 +374,7 @@ const PaymentScreen = () => {
     if (loading) {
         return (
             <View style={[styles.loadingContainer, { backgroundColor }]}>
-                <ActivityIndicator size="large" color="#4e8cff" />
+                <ActivityIndicator size="large" color="#FF5734" />
                 <Text style={[styles.loadingText, { color: subtitleColor }]}>Loading payment information...</Text>
             </View>
         );
@@ -319,45 +464,77 @@ const PaymentScreen = () => {
                         </View>
                     ) : (
                         <View style={styles.coursesContainer}>
-                            {enrolledCourses.map((course) => (
-                                <View key={course.id} style={[styles.courseCard, { backgroundColor: cardColor }]}>
-                                    <View style={styles.courseHeader}>
-                                        <View>
-                                            <Text style={[styles.courseName, { fontSize: isSmallScreen ? 16 : 18, color: textColor }]}>
-                                                {course.full_name}
-                                            </Text>
-                                            <Text style={[styles.courseCode, { color: subtitleColor }]}>
-                                                {course.codename}
-                                            </Text>
-                                            <View style={[styles.courseTypeBadge, { 
-                                                backgroundColor: course.course_type === 'Core Curriculum' ? '#10B981' : '#F59E0B' 
-                                            }]}>
-                                                <Text style={styles.courseTypeText}>
-                                                    {course.course_type === 'Core Curriculum' ? 'Core' : 'Elective'}
+                            {enrolledCourses.map((course) => {
+                                const buttonConfig = getPaymentButtonConfig(course);
+                                const dueMonths = getDueMonthsForCourse(course.id);
+                                const pendingMonths = getPendingMonthsForCourse(course.id);
+                                
+                                return (
+                                    <View key={course.id} style={[styles.courseCard, { backgroundColor: cardColor }]}>
+                                        <View style={styles.courseHeader}>
+                                            <View>
+                                                <Text style={[styles.courseName, { fontSize: isSmallScreen ? 16 : 18, color: textColor }]}>
+                                                    {course.full_name}
                                                 </Text>
+                                                <Text style={[styles.courseCode, { color: subtitleColor }]}>
+                                                    {course.codename}
+                                                </Text>
+                                                <View style={[styles.courseTypeBadge, { 
+                                                    backgroundColor: course.course_type === 'Core Curriculum' ? '#10B981' : '#F59E0B' 
+                                                }]}>
+                                                    <Text style={styles.courseTypeText}>
+                                                        {course.course_type === 'Core Curriculum' ? 'Core' : 'Elective'}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                            <View style={[styles.courseIcon, { backgroundColor: isDark ? 'rgba(255, 87, 52, 0.2)' : 'rgba(255, 87, 52, 0.1)' }]}>
+                                                <Ionicons name="book" size={24} color="#FF5734" />
                                             </View>
                                         </View>
-                                        <View style={[styles.courseIcon, { backgroundColor: isDark ? 'rgba(78, 140, 255, 0.2)' : 'rgba(78, 140, 255, 0.1)' }]}>
-                                            <Ionicons name="book" size={24} color="#4e8cff" />
+
+                                        <View style={styles.paymentInfo}>
+                                            <Text style={[styles.amountLabel, { color: subtitleColor }]}>{getFeeLabel(course)}</Text>
+                                            <Text style={[styles.amount, { fontSize: isSmallScreen ? 20 : 24 }]}>
+                                                ₹{getCourseFee(course)}
+                                            </Text>
+                                            
+                                            {/* Payment Status Information */}
+                                            {dueMonths.length > 0 && (
+                                                <View style={styles.paymentStatusInfo}>
+                                                    <Ionicons name="alert-circle" size={16} color="#EF4444" />
+                                                    <Text style={[styles.paymentStatusText, { color: '#EF4444' }]}>
+                                                        {dueMonths.length} month{dueMonths.length > 1 ? 's' : ''} overdue
+                                                    </Text>
+                                                </View>
+                                            )}
+                                            
+                                            {pendingMonths.length > 0 && (
+                                                <View style={styles.paymentStatusInfo}>
+                                                    <Ionicons name="time" size={16} color="#F59E0B" />
+                                                    <Text style={[styles.paymentStatusText, { color: '#F59E0B' }]}>
+                                                        {pendingMonths.length} payment{pendingMonths.length > 1 ? 's' : ''} pending
+                                                    </Text>
+                                                </View>
+                                            )}
                                         </View>
-                                    </View>
 
-                                    <View style={styles.paymentInfo}>
-                                        <Text style={[styles.amountLabel, { color: subtitleColor }]}>{getFeeLabel(course)}</Text>
-                                        <Text style={[styles.amount, { fontSize: isSmallScreen ? 20 : 24 }]}>
-                                            ₹{getCourseFee(course)}
-                                        </Text>
+                                        <TouchableOpacity 
+                                            style={[
+                                                styles.payButton,
+                                                { backgroundColor: buttonConfig.color },
+                                                buttonConfig.disabled && styles.disabledButton
+                                            ]} 
+                                            onPress={() => !buttonConfig.disabled && handleMakePayment(course)}
+                                            disabled={buttonConfig.disabled}
+                                        >
+                                            <Ionicons name={buttonConfig.icon} size={20} color={buttonConfig.textColor} />
+                                            <Text style={[styles.payButtonText, { color: buttonConfig.textColor, fontSize: isSmallScreen ? 14 : 16 }]}>
+                                                {buttonConfig.text}
+                                            </Text>
+                                        </TouchableOpacity>
                                     </View>
-
-                                    <TouchableOpacity 
-                                        style={styles.payButton} 
-                                        onPress={() => handleMakePayment(course)}
-                                    >
-                                        <Ionicons name="card" size={20} color="#fff" />
-                                        <Text style={styles.payButtonText}>Make Payment</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            ))}
+                                );
+                            })}
                         </View>
                     )}
                 </View>
@@ -396,7 +573,7 @@ const PaymentScreen = () => {
                                     return (
                                         <View key={month} style={styles.monthSection}>
                                             <View style={[styles.monthHeader, { backgroundColor: cardColor }]}>
-                                                <Ionicons name="calendar" size={20} color="#4e8cff" />
+                                                <Ionicons name="calendar" size={20} color="#FF5734" />
                                                 <Text style={[styles.monthTitle, { fontSize: isSmallScreen ? 18 : 20, color: textColor }]}>
                                                     {month} 2025
                                                 </Text>
@@ -523,7 +700,7 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     activeTabButton: {
-        backgroundColor: '#4e8cff',
+        backgroundColor: '#FF5734',
     },
     tabButtonText: {
         fontWeight: '600',
@@ -604,16 +781,26 @@ const styles = StyleSheet.create({
     paymentInfo: {
         marginBottom: 20,
     },
+    paymentStatusInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+        gap: 6,
+    },
+    paymentStatusText: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
     amountLabel: {
         fontSize: 16,
         marginBottom: 4,
     },
     amount: {
         fontWeight: 'bold',
-        color: '#4e8cff',
+        color: '#FF5734',
     },
     payButton: {
-        backgroundColor: '#4e8cff',
+        backgroundColor: '#FF5734',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -626,6 +813,9 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 16,
         fontWeight: '600',
+    },
+    disabledButton: {
+        opacity: 0.8,
     },
     
     // History Styles
@@ -655,7 +845,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     monthBadge: {
-        backgroundColor: '#4e8cff',
+        backgroundColor: '#FF5734',
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 16,
@@ -748,7 +938,7 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     button: {
-        backgroundColor: '#4e8cff',
+        backgroundColor: '#FF5734',
         paddingVertical: 12,
         paddingHorizontal: 32,
         borderRadius: 8,
