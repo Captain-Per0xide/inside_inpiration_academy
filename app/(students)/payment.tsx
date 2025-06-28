@@ -1,3 +1,4 @@
+import PaymentComponent from '@/components/payment';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useThemeColor } from '@/hooks/useThemeColor';
 import { supabase } from '@/lib/supabase';
@@ -22,6 +23,7 @@ interface Course {
     fees_total: number | null;
     course_type: string;
     codename: string;
+    enrolled_students?: any[];
 }
 
 interface PaymentRecord {
@@ -51,6 +53,11 @@ const PaymentScreen = () => {
     const [userInfo, setUserInfo] = useState<any>(null);
     const [coursePaymentStatuses, setCoursePaymentStatuses] = useState<CoursePaymentStatus[]>([]);
     
+    // Payment flow state
+    const [showPaymentForm, setShowPaymentForm] = useState(false);
+    const [selectedCourseForPayment, setSelectedCourseForPayment] = useState<string | null>(null);
+    const [selectedPaymentMonth, setSelectedPaymentMonth] = useState<string | null>(null);
+    
     // Theme setup
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
@@ -76,6 +83,11 @@ const PaymentScreen = () => {
             'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'
         ];
         return months[new Date().getMonth()];
+    }, []);
+
+    // Helper function to get current date
+    const getCurrentDate = useCallback(() => {
+        return new Date();
     }, []);
 
     const fetchUserInfo = useCallback(async () => {
@@ -109,7 +121,7 @@ const PaymentScreen = () => {
         try {
             const { data, error } = await supabase
                 .from('courses')
-                .select('id, full_name, fees_monthly, fees_total, course_type, codename')
+                .select('id, full_name, fees_monthly, fees_total, course_type, codename, enrolled_students')
                 .in('id', courseIds);
 
             if (error) {
@@ -123,12 +135,102 @@ const PaymentScreen = () => {
         }
     }, []);
 
+    // Helper function to get user's enrollment date for a course
+    const getUserEnrollmentDate = useCallback((course: Course, userId: string): Date | null => {
+        if (!course.enrolled_students || !Array.isArray(course.enrolled_students)) {
+            return null;
+        }
+
+        for (const enrollmentData of course.enrolled_students) {
+            if (enrollmentData && enrollmentData.user_id === userId) {
+                return new Date(enrollmentData.approve_date);
+            }
+        }
+
+        return null;
+    }, []);
+
+    // Helper function to get month name from date
+    const getMonthName = useCallback((date: Date): string => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+        return months[date.getMonth()];
+    }, []);
+
+    // Helper function to get months between two dates
+    const getMonthsBetween = useCallback((startDate: Date, endDate: Date): string[] => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+        const result: string[] = [];
+        
+        const start = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+        
+        while (start <= end) {
+            result.push(months[start.getMonth()]);
+            start.setMonth(start.getMonth() + 1);
+        }
+        
+        return result;
+    }, []);
+
     const checkCoursePaymentStatuses = useCallback(async (userId: string, courseIds: string[]) => {
         try {
             const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+            // Use real current date
+            const currentDate = getCurrentDate();
+            console.log(`📅 Using current date: ${currentDate.toISOString()}`);
             const statuses: CoursePaymentStatus[] = [];
 
+            // First, get course data with enrollment information
+            const { data: coursesData, error: coursesError } = await supabase
+                .from('courses')
+                .select('id, enrolled_students')
+                .in('id', courseIds);
+
+            if (coursesError) {
+                console.error('Error fetching courses for enrollment data:', coursesError);
+                return;
+            }
+
             for (const courseId of courseIds) {
+                const courseData = coursesData?.find(c => c.id === courseId);
+                if (!courseData) continue;
+
+                // Find user's enrollment date for this course
+                let enrollmentDate: Date | null = null;
+                if (courseData.enrolled_students && Array.isArray(courseData.enrolled_students)) {
+                    for (const enrollmentData of courseData.enrolled_students) {
+                        if (enrollmentData && enrollmentData.user_id === userId) {
+                            enrollmentDate = new Date(enrollmentData.approve_date);
+                            console.log(`Found enrollment for user ${userId} in course ${courseId}: ${enrollmentDate.toISOString()}`);
+                            break;
+                        }
+                    }
+                }
+
+                if (!enrollmentDate) {
+                    console.log(`❌ No enrollment date found for user ${userId} in course ${courseId}`);
+                    continue;
+                }
+
+                console.log(`✅ Found enrollment for user ${userId} in course ${courseId}: ${enrollmentDate.toISOString()}`);
+                
+                // Log enrollment scenarios
+                if (enrollmentDate.getTime() > currentDate.getTime()) {
+                    console.log(`⚠️  FUTURE ENROLLMENT: User enrolled after current date - no payments should be due`);
+                } else {
+                    const monthsDiff = (currentDate.getFullYear() - enrollmentDate.getFullYear()) * 12 + 
+                                     (currentDate.getMonth() - enrollmentDate.getMonth());
+                    console.log(`📊 PAYMENT LOGIC: ${monthsDiff + 1} months should be checked for payment (from enrollment to current)`);
+                }
+
+                // Get all months from enrollment date to current date
+                const relevantMonths = getMonthsBetween(enrollmentDate, currentDate);
+                console.log(`📅 Course ${courseId}:`);
+                console.log(`   Enrollment Date: ${enrollmentDate.toISOString()}`);
+                console.log(`   Current Date: ${currentDate.toISOString()}`);
+                console.log(`   Relevant months:`, relevantMonths);
+
+                // Get fee data for this course
                 const { data: feeData, error } = await supabase
                     .from('fees')
                     .select('*')
@@ -136,36 +238,36 @@ const PaymentScreen = () => {
                     .single();
 
                 if (error || !feeData) {
-                    // If no fee record exists, all months are due
-                    months.forEach(month => {
+                    // If no fee record exists, mark all relevant months as due
+                    for (const month of relevantMonths) {
                         statuses.push({ 
                             course_id: courseId, 
                             month, 
                             status: 'due' 
                         });
-                    });
+                    }
                     continue;
                 }
 
-                // Check each month for payment status
-                months.forEach(month => {
+                // Check payment status for each relevant month
+                for (const month of relevantMonths) {
                     const monthData = feeData[month];
                     
                     if (!monthData || !Array.isArray(monthData)) {
-                        // If no payment data for this month, payment is due
+                        // No payment data for this month - mark as due
                         statuses.push({ 
                             course_id: courseId, 
                             month, 
                             status: 'due' 
                         });
-                        return;
+                        continue;
                     }
 
                     // Check if user has any payment record for this month
                     const userPayment = monthData.find((payment: any) => payment.user_id === userId);
                     
                     if (!userPayment) {
-                        // No payment record for this user in this month, payment is due
+                        // No payment record for this user in this month - mark as due
                         statuses.push({ 
                             course_id: courseId, 
                             month, 
@@ -179,14 +281,16 @@ const PaymentScreen = () => {
                             status: userPayment.status 
                         });
                     }
-                });
+                }
             }
 
+            console.log(`\n📋 PAYMENT STATUS SUMMARY:`);
+            console.log(`Total statuses: ${statuses.length}`);
             setCoursePaymentStatuses(statuses);
         } catch (error) {
             console.error('Error in checkCoursePaymentStatuses:', error);
         }
-    }, []);
+    }, [getMonthsBetween, getCurrentDate]);
 
     const fetchPaymentHistory = useCallback(async (userId: string, courseIds: string[]) => {
         try {
@@ -317,20 +421,36 @@ const PaymentScreen = () => {
             case 'due':
             default:
                 if (dueMonths.length > 1) {
+                    // Find the oldest due month to pay first
+                    const monthOrder = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+                    const sortedDueMonths = dueMonths.sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+                    const oldestDueMonth = sortedDueMonths[0];
+                    
                     return {
-                        text: `Pay for ${currentMonth} (${dueMonths.length} months due)`,
+                        text: `Pay ${oldestDueMonth} (${dueMonths.length} months due)`,
+                        icon: 'card' as const,
+                        color: '#EF4444',
+                        textColor: '#fff',
+                        disabled: false,
+                        oldestDueMonth: oldestDueMonth
+                    };
+                } else if (dueMonths.length === 1) {
+                    return {
+                        text: `Pay ${dueMonths[0]}`,
                         icon: 'card' as const,
                         color: '#FF5734',
                         textColor: '#fff',
-                        disabled: false
+                        disabled: false,
+                        oldestDueMonth: dueMonths[0]
                     };
                 } else {
                     return {
-                        text: `Pay for ${currentMonth}`,
+                        text: `Pay ${currentMonth}`,
                         icon: 'card' as const,
                         color: '#FF5734',
                         textColor: '#fff',
-                        disabled: false
+                        disabled: false,
+                        oldestDueMonth: currentMonth
                     };
                 }
         }
@@ -339,18 +459,49 @@ const PaymentScreen = () => {
     const handleMakePayment = (course: Course) => {
         const fee = getCourseFee(course);
         const feeType = course.course_type === 'Core Curriculum' ? 'monthly' : 'total';
+        const buttonConfig = getPaymentButtonConfig(course);
+        const dueMonths = getDueMonthsForCourse(course.id);
+        const paymentMonth = buttonConfig.oldestDueMonth || getCurrentMonthName();
+        
+        let alertMessage = `Make payment for ${course.full_name}\nAmount: ₹${fee} (${feeType})\nPayment for: ${paymentMonth}`;
+        
+        if (dueMonths.length > 1) {
+            alertMessage += `\n\nNote: You have ${dueMonths.length} months due. You must pay chronologically starting with ${paymentMonth}.`;
+        }
         
         Alert.alert(
             'Make Payment',
-            `Make payment for ${course.full_name}\nAmount: ₹${fee} (${feeType})`,
+            alertMessage,
             [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Proceed', onPress: () => {
-                    // Navigate to payment form
-                    console.log('Navigate to payment form for course:', course.id);
+                    // Show payment form for this course with specific month
+                    setSelectedCourseForPayment(course.id);
+                    setSelectedPaymentMonth(paymentMonth); // Pass the specific month
+                    setShowPaymentForm(true);
                 }}
             ]
         );
+    };
+
+    const handlePaymentSuccess = () => {
+        // Refresh data after successful payment
+        setShowPaymentForm(false);
+        setSelectedCourseForPayment(null);
+        setSelectedPaymentMonth(null);
+        fetchUserInfo(); // Refresh all data
+        
+        Alert.alert(
+            'Payment Submitted',
+            'Your payment has been submitted successfully and will be verified within 24 hours.',
+            [{ text: 'OK' }]
+        );
+    };
+
+    const handleBackFromPayment = () => {
+        setShowPaymentForm(false);
+        setSelectedCourseForPayment(null);
+        setSelectedPaymentMonth(null);
     };
 
     const getStatusColor = (status: string) => {
@@ -377,6 +528,18 @@ const PaymentScreen = () => {
                 <ActivityIndicator size="large" color="#FF5734" />
                 <Text style={[styles.loadingText, { color: subtitleColor }]}>Loading payment information...</Text>
             </View>
+        );
+    }
+
+    // Show payment form when a course is selected for payment
+    if (showPaymentForm && selectedCourseForPayment) {
+        return (
+            <PaymentComponent
+                courseId={selectedCourseForPayment}
+                paymentMonth={selectedPaymentMonth || undefined}
+                onPaymentSuccess={handlePaymentSuccess}
+                onBack={handleBackFromPayment}
+            />
         );
     }
 
@@ -503,7 +666,7 @@ const PaymentScreen = () => {
                                                 <View style={styles.paymentStatusInfo}>
                                                     <Ionicons name="alert-circle" size={16} color="#EF4444" />
                                                     <Text style={[styles.paymentStatusText, { color: '#EF4444' }]}>
-                                                        {dueMonths.length} month{dueMonths.length > 1 ? 's' : ''} overdue
+                                                        {dueMonths.length} month{dueMonths.length > 1 ? 's' : ''} overdue: {dueMonths.join(', ')}
                                                     </Text>
                                                 </View>
                                             )}
@@ -512,8 +675,66 @@ const PaymentScreen = () => {
                                                 <View style={styles.paymentStatusInfo}>
                                                     <Ionicons name="time" size={16} color="#F59E0B" />
                                                     <Text style={[styles.paymentStatusText, { color: '#F59E0B' }]}>
-                                                        {pendingMonths.length} payment{pendingMonths.length > 1 ? 's' : ''} pending
+                                                        {pendingMonths.length} payment{pendingMonths.length > 1 ? 's' : ''} pending: {pendingMonths.join(', ')}
                                                     </Text>
+                                                </View>
+                                            )}
+
+                                            {/* Monthly Payment Status Breakdown */}
+                                            {(dueMonths.length > 1 || pendingMonths.length > 0) && (
+                                                <View style={styles.monthlyBreakdown}>
+                                                    <Text style={[styles.breakdownTitle, { color: textColor }]}>
+                                                        Monthly Payment Status:
+                                                    </Text>
+                                                    <View style={styles.monthlyStatusGrid}>
+                                                        {(() => {
+                                                            // Get user's enrollment date for this course
+                                                            const enrollmentDate = getUserEnrollmentDate(course, userInfo?.id);
+                                                            if (!enrollmentDate) return null;
+
+                                                            // Get relevant months from enrollment to current (TESTING: Using September)
+                                                            const currentDate = getCurrentDate();
+                                                            const relevantMonths = getMonthsBetween(enrollmentDate, currentDate);
+
+                                                            return relevantMonths.map(month => {
+                                                                const monthStatus = coursePaymentStatuses.find(s => 
+                                                                    s.course_id === course.id && s.month === month
+                                                                );
+                                                                
+                                                                let statusColor = '#6B7280';
+                                                                let statusIcon = 'help-circle';
+                                                                
+                                                                if (monthStatus) {
+                                                                    switch (monthStatus.status) {
+                                                                        case 'success':
+                                                                            statusColor = '#10B981';
+                                                                            statusIcon = 'checkmark-circle';
+                                                                            break;
+                                                                        case 'pending':
+                                                                            statusColor = '#F59E0B';
+                                                                            statusIcon = 'time';
+                                                                            break;
+                                                                        case 'due':
+                                                                            statusColor = '#EF4444';
+                                                                            statusIcon = 'close-circle';
+                                                                            break;
+                                                                    }
+                                                                } else {
+                                                                    statusColor = '#EF4444';
+                                                                    statusIcon = 'close-circle';
+                                                                }
+                                                                
+                                                                return (
+                                                                    <View key={month} style={[styles.monthStatusItem, { borderColor: statusColor }]}>
+                                                                        <Text style={[styles.monthStatusText, { color: statusColor }]}>
+                                                                            {month}
+                                                                        </Text>
+                                                                        <Ionicons name={statusIcon as any} size={16} color={statusColor} />
+                                                                    </View>
+                                                                );
+                                                            });
+                                                        })()}
+                                                    </View>
                                                 </View>
                                             )}
                                         </View>
@@ -922,6 +1143,59 @@ const styles = StyleSheet.create({
     historyDetailText: {
         fontSize: 14,
         flex: 1,
+    },
+    
+    // Monthly breakdown styles
+    monthlyBreakdown: {
+        marginTop: 16,
+        padding: 12,
+        backgroundColor: 'rgba(156, 163, 175, 0.1)',
+        borderRadius: 8,
+    },
+    breakdownTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    monthlyStatusGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 6,
+    },
+    monthStatusItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 6,
+        borderWidth: 1,
+        gap: 4,
+        minWidth: 60,
+    },
+    monthStatusText: {
+        fontSize: 12,
+        fontWeight: '500',
+    },
+    
+    // Testing mode styles
+    testingModeIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        borderWidth: 1,
+        borderColor: '#F59E0B',
+        borderRadius: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        marginHorizontal: 20,
+        marginBottom: 20,
+        gap: 8,
+    },
+    testingModeText: {
+        color: '#F59E0B',
+        fontSize: 14,
+        fontWeight: '600',
     },
     
     // Legacy styles (keeping for compatibility)

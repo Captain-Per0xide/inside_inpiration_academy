@@ -35,6 +35,7 @@ interface User {
 
 interface PaymentComponentProps {
   courseId: string;
+  paymentMonth?: string; // Optional specific month to pay for
   onPaymentSuccess?: () => void;
   onBack?: () => void;
 }
@@ -48,6 +49,7 @@ interface PaymentInfo {
 
 const PaymentComponent: React.FC<PaymentComponentProps> = ({
   courseId,
+  paymentMonth,
   onPaymentSuccess,
   onBack,
 }) => {
@@ -67,8 +69,13 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
   const [studentEmail, setStudentEmail] = useState("");
   const [studentPhone, setStudentPhone] = useState("");
 
-  // Get current month name
+  // Get current month name (or specific payment month)
   const getCurrentMonthName = () => {
+    // If a specific payment month is provided, use that
+    if (paymentMonth) {
+      return paymentMonth;
+    }
+    
     const months = [
       "Jan",
       "Feb",
@@ -500,9 +507,16 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
     >
-      <Text style={[styles.title, { fontSize: isSmallScreen ? 20 : 24 }]}>
-        Complete Payment
-      </Text>
+      {/* Header with Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={[styles.title, { fontSize: isSmallScreen ? 20 : 24 }]}>
+          Complete Payment
+        </Text>
+        <View style={styles.placeholder} />
+      </View>
 
       {/* Course Details */}
       <View style={styles.courseCard}>
@@ -535,6 +549,9 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
         </Text>
         <Text style={[styles.monthInfo, { fontSize: isSmallScreen ? 14 : 16 }]}>
           Payment for: {getCurrentMonthName()} {new Date().getFullYear()}
+          {paymentMonth && paymentMonth !== new Date().toLocaleString('default', { month: 'short' }) && (
+            <Text style={styles.chronologicalNote}> (Chronological Payment)</Text>
+          )}
         </Text>
         <View style={styles.amountContainer}>
           <Text
@@ -979,6 +996,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     fontStyle: "italic",
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  placeholder: {
+    width: 24, // Same width as back button for centering
+  },
+  chronologicalNote: {
+    color: "#F59E0B",
+    fontWeight: "600",
+    fontSize: 12,
   },
 });
 
