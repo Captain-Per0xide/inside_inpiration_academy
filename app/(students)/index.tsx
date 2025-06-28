@@ -1,9 +1,10 @@
+import CoursePurchase from '@/components/course-purchase';
 import { supabase } from '@/lib/supabase';
 import { authService } from '@/services/authService';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Button, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, Modal, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface UserData {
     id?: string;
@@ -34,13 +35,13 @@ interface Course {
 const StudentsDashboard = () => {
     const [userData, setUserData] = useState<UserData>({});
     const [isLoading, setIsLoading] = useState<boolean>(true);
-    const [modalVisible, setModalVisible] = useState(false);
-    const [formValue, setFormValue] = useState('');
     const [otherCourses, setOtherCourses] = useState<Course[]>([]);
     const [coursesLoading, setCoursesLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [screenData, setScreenData] = useState(Dimensions.get('window'));
     const [pendingPayments, setPendingPayments] = useState<Set<string>>(new Set());
+    const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+    const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchUserData();
@@ -78,6 +79,18 @@ const StudentsDashboard = () => {
         const feeType = course.course_type === 'Core Curriculum' ? '/month' : '';
         return `₹${fee}${feeType}`;
     }, [getCourseFee]);
+
+    // Get time-based greeting
+    const getTimeBasedGreeting = useCallback(() => {
+        const hour = new Date().getHours();
+        if (hour < 12) {
+            return 'Good Morning';
+        } else if (hour < 17) {
+            return 'Good Afternoon';
+        } else {
+            return 'Good Evening';
+        }
+    }, []);
 
     const checkPendingPayments = useCallback(async (userId: string) => {
         try {
@@ -209,11 +222,21 @@ const StudentsDashboard = () => {
             return;
         }
 
-        // Navigate to course purchase page with course ID
-        router.push({
-            pathname: '/(students)/course-purchase',
-            params: { courseId: course.id },
-        });
+        // Open course purchase modal
+        setSelectedCourseId(course.id);
+        setShowPurchaseModal(true);
+    };
+
+    const handlePaymentSuccess = () => {
+        setShowPurchaseModal(false);
+        setSelectedCourseId(null);
+        // Refresh the data to update enrolled courses
+        fetchUserData();
+    };
+
+    const handlePaymentBack = () => {
+        setShowPurchaseModal(false);
+        setSelectedCourseId(null);
     };
 
     // Calculate responsive layout
@@ -401,30 +424,9 @@ const StudentsDashboard = () => {
                 />
             }
         >
-            <Text style={styles.title}>Welcome to Students Dashboard</Text>
-            
-            {/* User Information Section */}
-            <View style={styles.userInfoContainer}>
-                <Text style={styles.sectionTitle}>User Information</Text>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>ID:</Text>
-                    <Text style={styles.value}>{userData.id || 'Not available'}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>Name:</Text>
-                    <Text style={styles.value}>{userData.name || 'Not set'}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>Email:</Text>
-                    <Text style={styles.value}>{userData.email || 'Not available'}</Text>
-                </View>
-                <View style={styles.infoRow}>
-                    <Text style={styles.label}>Enrolled:</Text>
-                    <Text style={styles.value}>
-                        {userData.enrolled_courses?.length || 0} course{(userData.enrolled_courses?.length || 0) !== 1 ? 's' : ''}
-                    </Text>
-                </View>
-            </View>
+            <Text style={styles.title}>
+                {getTimeBasedGreeting()}, {userData.name || 'Student'}!
+            </Text>
 
             {/* Browse Other Courses Section */}
             <View style={styles.coursesSection}>
@@ -462,38 +464,21 @@ const StudentsDashboard = () => {
                     />
                 )}
             </View>
-            {/* Floating Action Button */}
-            <TouchableOpacity
-                style={styles.fab}
-                activeOpacity={0.7}
-                onPress={() => setModalVisible(true)}
-            >
-                <Ionicons name="add" size={32} color="#fff" />
-            </TouchableOpacity>
 
-            {/* Modal for Form */}
+            {/* Course Purchase Modal */}
             <Modal
-                visible={modalVisible}
+                visible={showPurchaseModal}
                 animationType="slide"
-                transparent
-                onRequestClose={() => setModalVisible(false)}
+                presentationStyle="pageSheet"
+                onRequestClose={handlePaymentBack}
             >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>Add New Item</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Enter something..."
-                            value={formValue}
-                            onChangeText={setFormValue}
-                        />
-                        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20 }}>
-                            <Button title="Cancel" onPress={() => setModalVisible(false)} color="#888" />
-                            <View style={{ width: 12 }} />
-                            <Button title="Submit" onPress={() => { setModalVisible(false); setFormValue(''); }} color="#2E4064" />
-                        </View>
-                    </View>
-                </View>
+                {selectedCourseId && (
+                    <CoursePurchase
+                        courseId={selectedCourseId}
+                        onPaymentSuccess={handlePaymentSuccess}
+                        onBack={handlePaymentBack}
+                    />
+                )}
             </Modal>
         </ScrollView>
     );
@@ -521,21 +506,10 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         textAlign: 'center',
         marginBottom: 30,
-        color: '#333',
+        color: '#fff',
     },
-    userInfoContainer: {
-        backgroundColor: '#f8f9fa',
-        padding: 20,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#e9ecef',
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 15,
-        color: '#495057',
-        textAlign: 'center',
+    coursesContainer: {
+        marginTop: 30,
     },
     infoRow: {
         flexDirection: 'row',
@@ -548,71 +522,6 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         flex: 1,
         flexWrap: 'wrap',
-    },
-    label: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#495057',
-        width: 60,
-        marginRight: 10,
-    },
-    value: {
-        fontSize: 16,
-        color: '#212529',
-        flex: 1,
-        flexWrap: 'wrap',
-    },
-
-    fab: {
-        position: 'absolute',
-        right: 24,
-        bottom: 32,
-        width: 60,
-        height: 60,
-        borderRadius: 15,
-        backgroundColor: '#2E4064',
-        justifyContent: 'center',
-        alignItems: 'center',
-        elevation: 6,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-    },
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    modalContent: {
-        width: '85%',
-        backgroundColor: '#fff',
-        borderRadius: 12,
-        padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 6,
-        elevation: 8,
-    },
-    modalTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        marginBottom: 16,
-        color: '#2E4064',
-        textAlign: 'center',
-    },
-    input: {
-        borderWidth: 1,
-        borderColor: '#ccc',
-        borderRadius: 8,
-        padding: 10,
-        fontSize: 16,
-        backgroundColor: '#f9f9f9',
-    },
-    coursesContainer: {
-        marginTop: 30,
     },
     coursesSection: {
         marginTop: 30,
