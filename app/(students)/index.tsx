@@ -211,7 +211,7 @@ const StudentsDashboard = () => {
 
         // Navigate to course purchase page with course ID
         router.push({
-            pathname: '/(students)/course-purchase',
+            pathname: '/course-purchase',
             params: { courseId: course.id },
         });
     };
