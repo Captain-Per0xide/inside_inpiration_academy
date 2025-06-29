@@ -1255,6 +1255,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: "100%",
     maxHeight: "95%",
+    minHeight: 800,
     backgroundColor: "#29395A",
     borderRadius: 20,
     overflow: "hidden",
@@ -1328,7 +1329,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 20,
+    paddingBottom: 100,
   },
   inputGroup: {
     marginBottom: 16,
