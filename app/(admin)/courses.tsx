@@ -1,6 +1,7 @@
 import AddCoursesModal from '@/components/add-courses';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -235,7 +236,13 @@ const Courses = () => {
                         </View>
                     </View>
                     
-                    <TouchableOpacity style={styles.viewButton}>
+                    <TouchableOpacity 
+                        style={styles.viewButton}
+                        onPress={() => router.push({
+                            pathname: '/course-details',
+                            params: { courseId: item.id }
+                        })}
+                    >
                         <Text style={[
                             styles.viewButtonText,
                             { fontSize: isSmallScreen ? 14 : 16 }

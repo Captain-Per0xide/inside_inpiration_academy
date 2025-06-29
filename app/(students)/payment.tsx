@@ -90,6 +90,22 @@ const PaymentScreen = () => {
         return new Date();
     }, []);
 
+    // Helper function to get months between two dates
+    const getMonthsBetween = useCallback((startDate: Date, endDate: Date): string[] => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+        const result: string[] = [];
+        
+        const start = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+        
+        while (start <= end) {
+            result.push(months[start.getMonth()]);
+            start.setMonth(start.getMonth() + 1);
+        }
+        
+        return result;
+    }, []);
+
     const fetchUserInfo = useCallback(async () => {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -107,10 +123,26 @@ const PaymentScreen = () => {
             }
 
             setUserInfo(data);
-            if (data.enrolled_courses && data.enrolled_courses.length > 0) {
-                await fetchEnrolledCourses(data.enrolled_courses);
-                await checkCoursePaymentStatuses(user.id, data.enrolled_courses);
-                await fetchPaymentHistory(user.id, data.enrolled_courses);
+            
+            // Extract all course IDs from enrolled_courses array regardless of status
+            if (data.enrolled_courses && Array.isArray(data.enrolled_courses)) {
+                // Extract all course IDs regardless of status
+                const courseIds = data.enrolled_courses
+                    .filter((enrollment: any) => enrollment && enrollment.course_id)
+                    .map((enrollment: any) => enrollment.course_id);
+                
+                console.log('📚 Extracted all enrolled course IDs:', courseIds);
+                
+                if (courseIds.length > 0) {
+                    await fetchEnrolledCourses(courseIds);
+                    await checkCoursePaymentStatuses(user.id, courseIds);
+                    await fetchPaymentHistory(user.id, courseIds);
+                }
+            } else {
+                console.log('📚 No enrolled courses found');
+                setEnrolledCourses([]);
+                setCoursePaymentStatuses([]);
+                setPaymentHistory([]);
             }
         } catch (error) {
             console.error('Error in fetchUserInfo:', error);
@@ -138,16 +170,28 @@ const PaymentScreen = () => {
     // Helper function to get user's enrollment date for a course
     const getUserEnrollmentDate = useCallback((course: Course, userId: string): Date | null => {
         if (!course.enrolled_students || !Array.isArray(course.enrolled_students)) {
+            console.log(`❌ No enrolled_students data for course ${course.id}`);
             return null;
         }
 
-        for (const enrollmentData of course.enrolled_students) {
-            if (enrollmentData && enrollmentData.user_id === userId) {
-                return new Date(enrollmentData.approve_date);
-            }
+        // Find the user in the course's enrolled_students array
+        const userEnrollment = course.enrolled_students.find(
+            (student: any) => student && student.user_id === userId
+        );
+
+        if (!userEnrollment) {
+            console.log(`❌ User ${userId} not found in course ${course.id} enrolled_students`);
+            return null;
         }
 
-        return null;
+        if (!userEnrollment.approve_date) {
+            console.log(`❌ No approve_date found for user ${userId} in course ${course.id}`);
+            return null;
+        }
+
+        const enrollmentDate = new Date(userEnrollment.approve_date);
+        console.log(`✅ Found enrollment date for user ${userId} in course ${course.id}: ${enrollmentDate.toISOString()}`);
+        return enrollmentDate;
     }, []);
 
     // Helper function to get month name from date
@@ -156,25 +200,10 @@ const PaymentScreen = () => {
         return months[date.getMonth()];
     }, []);
 
-    // Helper function to get months between two dates
-    const getMonthsBetween = useCallback((startDate: Date, endDate: Date): string[] => {
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
-        const result: string[] = [];
-        
-        const start = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-        const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
-        
-        while (start <= end) {
-            result.push(months[start.getMonth()]);
-            start.setMonth(start.getMonth() + 1);
-        }
-        
-        return result;
-    }, []);
-
     const checkCoursePaymentStatuses = useCallback(async (userId: string, courseIds: string[]) => {
         try {
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+            console.log(`🔍 Checking payment statuses for user ${userId} with courses:`, courseIds);
+            
             // Use real current date
             const currentDate = getCurrentDate();
             console.log(`📅 Using current date: ${currentDate.toISOString()}`);
@@ -183,7 +212,7 @@ const PaymentScreen = () => {
             // First, get course data with enrollment information
             const { data: coursesData, error: coursesError } = await supabase
                 .from('courses')
-                .select('id, enrolled_students')
+                .select('id, full_name, enrolled_students')
                 .in('id', courseIds);
 
             if (coursesError) {
@@ -191,19 +220,27 @@ const PaymentScreen = () => {
                 return;
             }
 
+            console.log(`📚 Found ${coursesData?.length || 0} courses`);
+
             for (const courseId of courseIds) {
+                console.log(`\n🔄 Processing course: ${courseId}`);
+                
                 const courseData = coursesData?.find(c => c.id === courseId);
-                if (!courseData) continue;
+                if (!courseData) {
+                    console.log(`❌ Course data not found for ${courseId}`);
+                    continue;
+                }
 
                 // Find user's enrollment date for this course
                 let enrollmentDate: Date | null = null;
                 if (courseData.enrolled_students && Array.isArray(courseData.enrolled_students)) {
-                    for (const enrollmentData of courseData.enrolled_students) {
-                        if (enrollmentData && enrollmentData.user_id === userId) {
-                            enrollmentDate = new Date(enrollmentData.approve_date);
-                            console.log(`Found enrollment for user ${userId} in course ${courseId}: ${enrollmentDate.toISOString()}`);
-                            break;
-                        }
+                    const userEnrollment = courseData.enrolled_students.find(
+                        (student: any) => student && student.user_id === userId
+                    );
+                    
+                    if (userEnrollment && userEnrollment.approve_date) {
+                        enrollmentDate = new Date(userEnrollment.approve_date);
+                        console.log(`✅ Found enrollment for user ${userId} in course ${courseId}: ${enrollmentDate.toISOString()}`);
                     }
                 }
 
@@ -211,12 +248,11 @@ const PaymentScreen = () => {
                     console.log(`❌ No enrollment date found for user ${userId} in course ${courseId}`);
                     continue;
                 }
-
-                console.log(`✅ Found enrollment for user ${userId} in course ${courseId}: ${enrollmentDate.toISOString()}`);
                 
                 // Log enrollment scenarios
                 if (enrollmentDate.getTime() > currentDate.getTime()) {
                     console.log(`⚠️  FUTURE ENROLLMENT: User enrolled after current date - no payments should be due`);
+                    continue;
                 } else {
                     const monthsDiff = (currentDate.getFullYear() - enrollmentDate.getFullYear()) * 12 + 
                                      (currentDate.getMonth() - enrollmentDate.getMonth());
@@ -225,7 +261,7 @@ const PaymentScreen = () => {
 
                 // Get all months from enrollment date to current date
                 const relevantMonths = getMonthsBetween(enrollmentDate, currentDate);
-                console.log(`📅 Course ${courseId}:`);
+                console.log(`📅 Course ${courseId} (${courseData.full_name}):`);
                 console.log(`   Enrollment Date: ${enrollmentDate.toISOString()}`);
                 console.log(`   Current Date: ${currentDate.toISOString()}`);
                 console.log(`   Relevant months:`, relevantMonths);
@@ -238,6 +274,7 @@ const PaymentScreen = () => {
                     .single();
 
                 if (error || !feeData) {
+                    console.log(`⚠️  No fee record exists for course ${courseId} - marking all months as due`);
                     // If no fee record exists, mark all relevant months as due
                     for (const month of relevantMonths) {
                         statuses.push({ 
@@ -255,6 +292,7 @@ const PaymentScreen = () => {
                     
                     if (!monthData || !Array.isArray(monthData)) {
                         // No payment data for this month - mark as due
+                        console.log(`❌ No payment data for ${month} in course ${courseId}`);
                         statuses.push({ 
                             course_id: courseId, 
                             month, 
@@ -268,6 +306,7 @@ const PaymentScreen = () => {
                     
                     if (!userPayment) {
                         // No payment record for this user in this month - mark as due
+                        console.log(`❌ No payment record for user ${userId} in ${month} for course ${courseId}`);
                         statuses.push({ 
                             course_id: courseId, 
                             month, 
@@ -275,6 +314,7 @@ const PaymentScreen = () => {
                         });
                     } else {
                         // User has a payment record, use its status
+                        console.log(`✅ Found payment record for user ${userId} in ${month} for course ${courseId}: ${userPayment.status}`);
                         statuses.push({ 
                             course_id: courseId, 
                             month, 
@@ -286,6 +326,10 @@ const PaymentScreen = () => {
 
             console.log(`\n📋 PAYMENT STATUS SUMMARY:`);
             console.log(`Total statuses: ${statuses.length}`);
+            statuses.forEach(status => {
+                console.log(`   ${status.course_id} - ${status.month}: ${status.status}`);
+            });
+            
             setCoursePaymentStatuses(statuses);
         } catch (error) {
             console.error('Error in checkCoursePaymentStatuses:', error);
@@ -320,10 +364,11 @@ const PaymentScreen = () => {
                             payment.user_id === userId && payment.status === 'success'
                         );
                         
-                        userSuccessfulPayments.forEach((payment: any) => {                // Use fees_monthly for Core Curriculum, fees_total for Elective
-                const amount = courseData?.course_type === 'Core Curriculum' 
-                    ? courseData?.fees_monthly || 0 
-                    : courseData?.fees_total || 0;
+                        userSuccessfulPayments.forEach((payment: any) => {
+                            // Use fees_monthly for Core Curriculum, fees_total for Elective
+                            const amount = courseData?.course_type === 'Core Curriculum' 
+                                ? courseData?.fees_monthly || 0 
+                                : courseData?.fees_total || 0;
                     
                 history.push({
                     course_id: courseId,

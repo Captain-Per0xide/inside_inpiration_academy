@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, FlatList, Image, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, FlatList, Image, RefreshControl, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface Course {
     id: string;
@@ -18,11 +18,18 @@ interface Course {
     fees_total: number;
     instructor: string;
     instructor_image: string;
+    enrollmentStatus?: string; // Added to track enrollment status
+}
+
+interface EnrollmentData {
+    status: string;
+    course_id: string;
 }
 
 const MyBatchesScreen = () => {
     const [courses, setCourses] = useState<Course[]>([]);
     const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [screenData, setScreenData] = useState(Dimensions.get('window'));
 
     // Helper functions for course type-based fee rendering
@@ -53,9 +60,13 @@ const MyBatchesScreen = () => {
         return () => subscription?.remove();
     }, []);
 
-    const fetchEnrolledCourses = async () => {
+    const fetchEnrolledCourses = async (isRefresh = false) => {
         try {
-            setLoading(true);
+            if (isRefresh) {
+                setRefreshing(true);
+            } else {
+                setLoading(true);
+            }
             
             // Get current user session
             const { data: { session }, error: sessionError } = await supabase.auth.getSession();
@@ -89,11 +100,15 @@ const MyBatchesScreen = () => {
                 return;
             }
 
+            // Extract course IDs from the new JSONB structure
+            const enrollmentData: EnrollmentData[] = userData.enrolled_courses;
+            const courseIds = enrollmentData.map((enrollment) => enrollment.course_id);
+
             // Fetch course details for enrolled courses
             const { data: coursesData, error: coursesError } = await supabase
                 .from('courses')
                 .select('*')
-                .in('id', userData.enrolled_courses);
+                .in('id', courseIds);
 
             if (coursesError) {
                 console.error('Courses fetch error:', coursesError);
@@ -101,13 +116,34 @@ const MyBatchesScreen = () => {
                 return;
             }
 
-            setCourses(coursesData || []);
+            // Add enrollment status to each course
+            const coursesWithStatus = (coursesData || []).map((course) => {
+                const enrollment = enrollmentData.find((enroll) => enroll.course_id === course.id);
+                return {
+                    ...course,
+                    enrollmentStatus: enrollment?.status || 'pending'
+                };
+            });
+
+            setCourses(coursesWithStatus);
         } catch (error) {
             console.error('Error fetching enrolled courses:', error);
             Alert.alert('Error', 'An unexpected error occurred');
         } finally {
-            setLoading(false);
+            if (isRefresh) {
+                setRefreshing(false);
+            } else {
+                setLoading(false);
+            }
         }
+    };
+
+    const onRefresh = () => {
+        fetchEnrolledCourses(true);
+    };
+
+    const handleManualRefresh = () => {
+        fetchEnrolledCourses(true);
     };
 
     const parseSchedule = (scheduleString: string) => {
@@ -122,12 +158,14 @@ const MyBatchesScreen = () => {
 
     const renderCourseItem = ({ item }: { item: Course }) => {
         const isSmallScreen = screenData.width < 600;
+        const isPending = item.enrollmentStatus === 'pending';
         
         return (
             <View style={[
                 styles.courseCard, 
                 { 
                     backgroundColor: item.full_name_color,
+                    opacity: isPending ? 0.7 : 1,
                 }
             ]}>
                 <View style={styles.cardHeader}>
@@ -139,11 +177,19 @@ const MyBatchesScreen = () => {
                             {item.codename}
                         </Text>
                     </View>
-                    <Ionicons 
-                        name={item.course_type === "Core Curriculum" ? "school-outline" : "briefcase-outline"}
-                        size={isSmallScreen ? 24 : 26}
-                        color="black"
-                    />
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        {isPending && (
+                            <View style={styles.pendingBadge}>
+                                <Text style={styles.pendingBadgeText}>Pending</Text>
+                            </View>
+                        )}
+                        <Ionicons 
+                            name={item.course_type === "Core Curriculum" ? "school-outline" : "briefcase-outline"}
+                            size={isSmallScreen ? 24 : 26}
+                            color="black"
+                            style={{ marginLeft: isPending ? 8 : 0 }}
+                        />
+                    </View>
                 </View>
                 
                 <Text style={[
@@ -155,6 +201,15 @@ const MyBatchesScreen = () => {
                 ]}>
                     {item.full_name}
                 </Text>
+                
+                {isPending && (
+                    <View style={styles.pendingNotice}>
+                        <Ionicons name="time-outline" size={16} color="#F59E0B" />
+                        <Text style={styles.pendingNoticeText}>
+                            Pay your dues or Contact the admin
+                        </Text>
+                    </View>
+                )}
                 
                 <View style={styles.courseInfo}>
                     <View style={styles.infoRow}>
@@ -226,12 +281,19 @@ const MyBatchesScreen = () => {
                         </View>
                     </View>
                     
-                    <TouchableOpacity style={styles.viewButton}>
+                    <TouchableOpacity 
+                        style={[
+                            styles.viewButton,
+                            isPending && styles.viewButtonDisabled
+                        ]}
+                        disabled={isPending}
+                    >
                         <Text style={[
                             styles.viewButtonText,
-                            { fontSize: isSmallScreen ? 14 : 16 }
+                            { fontSize: isSmallScreen ? 14 : 16 },
+                            isPending && styles.viewButtonTextDisabled
                         ]}>
-                            View
+                            {isPending ? 'Pending' : 'View'}
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -252,7 +314,24 @@ const MyBatchesScreen = () => {
 
     return (
         <SafeAreaView style={styles.container}>
-            <Text style={[styles.title, { fontSize: screenData.width < 600 ? 20 : 24 }]}>My Batches</Text>
+            <View style={styles.header}>
+                <Text style={[styles.title, { fontSize: screenData.width < 600 ? 20 : 24 }]}>My Batches</Text>
+                <TouchableOpacity 
+                    style={styles.refreshButton}
+                    onPress={handleManualRefresh}
+                    disabled={refreshing}
+                >
+                    <Ionicons 
+                        name="refresh-outline" 
+                        size={screenData.width < 600 ? 22 : 24} 
+                        color="#6366F1" 
+                        style={{ 
+                            transform: [{ rotate: refreshing ? '360deg' : '0deg' }] 
+                        }}
+                    />
+                </TouchableOpacity>
+            </View>
+            
             {courses.length === 0 ? (
                 <View style={styles.emptyContainer}>
                     <Ionicons 
@@ -266,6 +345,16 @@ const MyBatchesScreen = () => {
                     <Text style={[styles.emptySubText, { fontSize: screenData.width < 600 ? 14 : 16 }]}>
                         Contact admin to enroll in courses
                     </Text>
+                    <TouchableOpacity 
+                        style={styles.refreshEmptyButton}
+                        onPress={handleManualRefresh}
+                        disabled={refreshing}
+                    >
+                        <Ionicons name="refresh-outline" size={20} color="#6366F1" />
+                        <Text style={styles.refreshEmptyText}>
+                            {refreshing ? 'Refreshing...' : 'Tap to refresh'}
+                        </Text>
+                    </TouchableOpacity>
                 </View>
             ) : (
                 <FlatList
@@ -274,6 +363,16 @@ const MyBatchesScreen = () => {
                     renderItem={renderCourseItem}
                     contentContainerStyle={styles.list}
                     showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            colors={['#6366F1']}
+                            tintColor="#6366F1"
+                            title="Pull to refresh enrollment status"
+                            titleColor="#666"
+                        />
+                    }
                 />
             )}
         </SafeAreaView>
@@ -291,8 +390,22 @@ const styles = StyleSheet.create({
         fontSize: 24,
         fontWeight: 'bold',
         marginVertical: 16,
-        alignSelf: 'center',
         color: '#fff',
+        flex: 1,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 4,
+        marginBottom: 8,
+    },
+    refreshButton: {
+        padding: 8,
+        borderRadius: 8,
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(99, 102, 241, 0.3)',
     },
     list: {
         paddingBottom: 16,
@@ -326,6 +439,23 @@ const styles = StyleSheet.create({
         color: '#888',
         textAlign: 'center',
         lineHeight: 22,
+    },
+    refreshEmptyButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 8,
+        marginTop: 20,
+        borderWidth: 1,
+        borderColor: 'rgba(99, 102, 241, 0.3)',
+    },
+    refreshEmptyText: {
+        fontSize: 16,
+        color: '#6366F1',
+        marginLeft: 8,
+        fontWeight: '500',
     },
     courseCard: {
         margin: 8,
@@ -422,6 +552,38 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#E5E7EB',
         fontStyle: 'italic',
+    },
+    pendingBadge: {
+        backgroundColor: '#F59E0B',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    pendingBadgeText: {
+        color: '#fff',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    pendingNotice: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+        padding: 8,
+        borderRadius: 8,
+        marginBottom: 12,
+    },
+    pendingNoticeText: {
+        color: '#F59E0B',
+        fontSize: 14,
+        fontWeight: '500',
+        marginLeft: 6,
+    },
+    viewButtonDisabled: {
+        backgroundColor: '#9CA3AF',
+        opacity: 0.6,
+    },
+    viewButtonTextDisabled: {
+        color: '#D1D5DB',
     },
 });
 

@@ -10,7 +10,10 @@ interface UserData {
     id?: string;
     email?: string;
     name?: string;
-    enrolled_courses?: string[];
+    enrolled_courses?: Array<{
+        status: string;
+        course_id: string;
+    }>;
 }
 
 interface Course {
@@ -170,7 +173,7 @@ const StudentsDashboard = () => {
         }
     };
 
-    const fetchOtherCourses = async (enrolledCourses: string[] = []) => {
+    const fetchOtherCourses = async (enrolledCourses: Array<{status: string; course_id: string}> = []) => {
         try {
             setCoursesLoading(true);
 
@@ -184,9 +187,12 @@ const StudentsDashboard = () => {
                 return;
             }
 
-            // Filter out enrolled courses
+            // Extract course IDs from the new JSONB structure
+            const enrolledCourseIds = enrolledCourses.map(enrollment => enrollment.course_id);
+
+            // Filter out enrolled courses (both success and pending)
             const availableCourses = data?.filter(course => 
-                !enrolledCourses.includes(course.id)
+                !enrolledCourseIds.includes(course.id)
             ) || [];
 
             setOtherCourses(availableCourses);

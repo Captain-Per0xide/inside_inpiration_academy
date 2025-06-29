@@ -616,11 +616,16 @@ const PaymentManagementPage = () => {
       // Update user based on their current role
       if (payment.user_role === "guest") {
         // For guests: update role to student and add course to enrolled_courses
+        const courseEnrollmentData = {
+          status: "success",
+          course_id: payment.course_id
+        };
+
         const { error: userUpdateError } = await supabase
           .from("users")
           .update({ 
             role: "student",
-            enrolled_courses: [payment.course_id]
+            enrolled_courses: [courseEnrollmentData]
           })
           .eq("id", payment.user_id);
 
@@ -648,9 +653,18 @@ const PaymentManagementPage = () => {
         } else {
           const currentEnrolledCourses = userData.enrolled_courses || [];
           
-          // Add the new course if not already enrolled
-          if (!currentEnrolledCourses.includes(payment.course_id)) {
-            const updatedEnrolledCourses = [...currentEnrolledCourses, payment.course_id];
+          // Check if course is already enrolled (check by course_id in the new format)
+          const isAlreadyEnrolled = currentEnrolledCourses.some((enrollment: any) => 
+            enrollment.course_id === payment.course_id
+          );
+          
+          if (!isAlreadyEnrolled) {
+            const courseEnrollmentData = {
+              status: "success",
+              course_id: payment.course_id
+            };
+            
+            const updatedEnrolledCourses = [...currentEnrolledCourses, courseEnrollmentData];
             
             const { error: updateCoursesError } = await supabase
               .from("users")
