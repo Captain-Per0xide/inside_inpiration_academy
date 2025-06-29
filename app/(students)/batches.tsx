@@ -18,12 +18,19 @@ interface Course {
     fees_total: number;
     instructor: string;
     instructor_image: string;
-    enrollmentStatus?: string; // Added to track enrollment status
+    enrollmentStatus?: string;
+    suspensionReason?: string;
+    overdueMonths?: number;
+    suspendedDate?: string;
 }
 
 interface EnrollmentData {
     status: string;
     course_id: string;
+    reason?: string;
+    overdue_months?: number;
+    suspended_date?: string;
+    last_trigger_check?: string;
 }
 
 const MyBatchesScreen = () => {
@@ -121,7 +128,10 @@ const MyBatchesScreen = () => {
                 const enrollment = enrollmentData.find((enroll) => enroll.course_id === course.id);
                 return {
                     ...course,
-                    enrollmentStatus: enrollment?.status || 'pending'
+                    enrollmentStatus: enrollment?.status || 'pending',
+                    suspensionReason: enrollment?.reason || null,
+                    overdueMonths: enrollment?.overdue_months || 0,
+                    suspendedDate: enrollment?.suspended_date || null
                 };
             });
 
@@ -180,7 +190,8 @@ const MyBatchesScreen = () => {
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         {isPending && (
                             <View style={styles.pendingBadge}>
-                                <Text style={styles.pendingBadgeText}>Pending</Text>
+                                <Ionicons name="ban" size={12} color="#fff" style={{ marginRight: 4 }} />
+                                <Text style={styles.pendingBadgeText}>SUSPENDED</Text>
                             </View>
                         )}
                         <Ionicons 
@@ -203,11 +214,40 @@ const MyBatchesScreen = () => {
                 </Text>
                 
                 {isPending && (
-                    <View style={styles.pendingNotice}>
-                        <Ionicons name="time-outline" size={16} color="#F59E0B" />
-                        <Text style={styles.pendingNoticeText}>
-                            Pay your dues or Contact the admin
-                        </Text>
+                    <View style={styles.suspensionContainer}>
+                        <View style={styles.suspensionHeader}>
+                            <Ionicons name="warning" size={20} color="#DC2626" />
+                            <Text style={styles.suspensionTitle}>ACCESS SUSPENDED</Text>
+                        </View>
+                        
+                        {item.suspensionReason ? (
+                            <View style={styles.reasonContainer}>
+                                <Text style={styles.reasonLabel}>Reason:</Text>
+                                <Text style={styles.reasonText}>
+                                    {item.suspensionReason}
+                                </Text>
+                            </View>
+                        ) : (
+                            <Text style={styles.defaultSuspensionText}>
+                                Payment overdue - Contact admin or clear your dues immediately
+                            </Text>
+                        )}
+                        
+                        {(item.overdueMonths ?? 0) > 0 && (
+                            <View style={styles.overdueInfo}>
+                                <Ionicons name="time" size={16} color="#DC2626" />
+                                <Text style={styles.overdueText}>
+                                    {item.overdueMonths} month{(item.overdueMonths ?? 0) > 1 ? 's' : ''} behind on payments
+                                </Text>
+                            </View>
+                        )}
+                        
+                        <View style={styles.urgentAction}>
+                            <Ionicons name="flash" size={16} color="#DC2626" />
+                            <Text style={styles.urgentActionText}>
+                                Immediate payment required to restore access
+                            </Text>
+                        </View>
                     </View>
                 )}
                 
@@ -293,7 +333,7 @@ const MyBatchesScreen = () => {
                             { fontSize: isSmallScreen ? 14 : 16 },
                             isPending && styles.viewButtonTextDisabled
                         ]}>
-                            {isPending ? 'Pending' : 'View'}
+                            {isPending ? 'Clear your dues' : 'View'}
                         </Text>
                     </TouchableOpacity>
                 </View>
@@ -554,15 +594,20 @@ const styles = StyleSheet.create({
         fontStyle: 'italic',
     },
     pendingBadge: {
-        backgroundColor: '#F59E0B',
-        paddingHorizontal: 8,
+        backgroundColor: '#DC2626',
+        paddingHorizontal: 10,
         paddingVertical: 4,
         borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#991B1B',
     },
     pendingBadgeText: {
         color: '#fff',
-        fontSize: 12,
-        fontWeight: '600',
+        fontSize: 11,
+        fontWeight: 'bold',
+        textTransform: 'uppercase',
     },
     pendingNotice: {
         flexDirection: 'row',
@@ -579,11 +624,87 @@ const styles = StyleSheet.create({
         marginLeft: 6,
     },
     viewButtonDisabled: {
-        backgroundColor: '#9CA3AF',
-        opacity: 0.6,
+        backgroundColor: '#DC2626',
+        borderColor: '#991B1B',
+        opacity: 1,
     },
     viewButtonTextDisabled: {
-        color: '#D1D5DB',
+        color: '#fff',
+        fontWeight: 'bold',
+    },
+    suspensionContainer: {
+        backgroundColor: 'rgba(220, 38, 38, 0.1)',
+        borderLeftWidth: 4,
+        borderLeftColor: '#DC2626',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 12,
+    },
+    suspensionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    suspensionTitle: {
+        color: '#DC2626',
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginLeft: 8,
+        textTransform: 'uppercase',
+    },
+    reasonContainer: {
+        backgroundColor: 'rgba(220, 38, 38, 0.05)',
+        padding: 8,
+        borderRadius: 6,
+        marginBottom: 8,
+    },
+    reasonLabel: {
+        color: '#DC2626',
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 4,
+        textTransform: 'uppercase',
+    },
+    reasonText: {
+        color: '#7F1D1D',
+        fontSize: 14,
+        fontWeight: '500',
+        lineHeight: 18,
+        fontStyle: 'italic',
+    },
+    defaultSuspensionText: {
+        color: '#DC2626',
+        fontSize: 14,
+        fontWeight: '500',
+        marginBottom: 8,
+    },
+    overdueInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(220, 38, 38, 0.08)',
+        padding: 6,
+        borderRadius: 4,
+        marginBottom: 6,
+    },
+    overdueText: {
+        color: '#DC2626',
+        fontSize: 13,
+        fontWeight: '600',
+        marginLeft: 6,
+    },
+    urgentAction: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(220, 38, 38, 0.15)',
+        padding: 6,
+        borderRadius: 4,
+    },
+    urgentActionText: {
+        color: '#991B1B',
+        fontSize: 12,
+        fontWeight: 'bold',
+        marginLeft: 6,
+        textTransform: 'uppercase',
     },
 });
 

@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { getCurrentDate, getCurrentMonthName, getCurrentYear } from '@/utils/testDate';
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
@@ -70,27 +71,14 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
   const [studentPhone, setStudentPhone] = useState("");
 
   // Get current month name (or specific payment month)
-  const getCurrentMonthName = () => {
+  const getPaymentMonthName = () => {
     // If a specific payment month is provided, use that
     if (paymentMonth) {
       return paymentMonth;
     }
-    
-    const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sept",
-      "Oct",
-      "Nov",
-      "Dec",
-    ];
-    return months[new Date().getMonth()];
+
+    // Use centralized date utility
+    return getCurrentMonthName();
   };
 
   // Helper functions for course type-based fee rendering
@@ -264,7 +252,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
     userId: string
   ): Promise<string | null> => {
     try {
-      const currentMonth = getCurrentMonthName();
+      const currentMonth = getPaymentMonthName();
 
       // Create file path: Payment-Data/{userId}/{currentMonth}/ss.png
       const filePath = `Payment-Data/${userId}/${currentMonth}/ss.png`;
@@ -379,7 +367,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
         return;
       }
 
-      const currentMonth = getCurrentMonthName();
+      const currentMonth = getPaymentMonthName();
 
       // Prepare payment data object
       const paymentData = {
@@ -460,7 +448,7 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
               // Clear form data after successful submission
               setTransactionId("");
               setPaymentScreenshot(null);
-              
+
               onPaymentSuccess?.();
             },
           },
@@ -529,8 +517,8 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
           <Text
             style={[
               styles.courseTypeBadge,
-              course.course_type === 'Core Curriculum' 
-                ? styles.coreTypeBadge 
+              course.course_type === 'Core Curriculum'
+                ? styles.coreTypeBadge
                 : styles.electiveTypeBadge
             ]}
           >
@@ -548,8 +536,8 @@ const PaymentComponent: React.FC<PaymentComponentProps> = ({
           Instructor: {course.instructor}
         </Text>
         <Text style={[styles.monthInfo, { fontSize: isSmallScreen ? 14 : 16 }]}>
-          Payment for: {getCurrentMonthName()} {new Date().getFullYear()}
-          {paymentMonth && paymentMonth !== new Date().toLocaleString('default', { month: 'short' }) && (
+          Payment for: {getPaymentMonthName()} {getCurrentYear()}
+          {paymentMonth && paymentMonth !== getCurrentDate().toLocaleString('default', { month: 'short' }) && (
             <Text style={styles.chronologicalNote}> (Chronological Payment)</Text>
           )}
         </Text>

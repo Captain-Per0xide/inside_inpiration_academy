@@ -15,6 +15,7 @@ import {
   View,
 } from "react-native";
 import { supabase } from "../lib/supabase";
+import { getCurrentDate } from '../utils/testDate';
 import CodenameIcon from "./icons/CodenameIcon";
 
 // Generate UUID function
@@ -82,37 +83,37 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({
     "#FF6B6B", "#FF5733", "#E74C3C", "#C0392B", "#8E44AD", "#922B21",
     "#F1948A", "#EC7063", "#CD6155", "#A93226", "#FF4757", "#FF3838",
     "#DC143C", "#B22222", "#8B0000", "#FF1744", "#D50000", "#B71C1C",
-    
+
     // Oranges
     "#F39C12", "#E67E22", "#D35400", "#FF7043", "#FF5722", "#F4511E",
     "#FF8A65", "#FFAB40", "#FF9800", "#FB8C00", "#F57C00", "#E65100",
     "#FF6F00", "#FF8F00", "#FFA000", "#FFB300", "#FFC107", "#FFCA28",
-    
+
     // Yellows
     "#FFEAA7", "#F7DC6F", "#F1C40F", "#F39800", "#FDD835", "#FFEB3B",
     "#FFEE58", "#FFF176", "#FFF59D", "#FFF9C4", "#FFFDE7", "#F8BBD9",
     "#F5B041", "#F8C471", "#FCDC00", "#FFD700", "#FFFF00", "#FFFFE0",
-    
+
     // Greens
     "#96CEB4", "#82E0AA", "#58D68D", "#52C41A", "#389E0D", "#237804",
     "#135200", "#52C41A", "#73D13D", "#95DE64", "#B7EB8F", "#D9F7BE",
     "#4CAF50", "#66BB6A", "#81C784", "#A5D6A7", "#C8E6C9", "#E8F5E8",
-    
+
     // Blues
     "#4ECDC4", "#45B7D1", "#85C1E9", "#5DADE2", "#3498DB", "#2980B9",
     "#2471A3", "#1B4F72", "#2196F3", "#42A5F5", "#64B5F6", "#90CAF9",
     "#BBDEFB", "#E3F2FD", "#03A9F4", "#29B6F6", "#4FC3F7", "#81D4FA",
-    
+
     // Purples
     "#DDA0DD", "#BB8FCE", "#A569BD", "#8E44AD", "#7B68EE", "#6A5ACD",
     "#483D8B", "#4B0082", "#9C27B0", "#AB47BC", "#BA68C8", "#CE93D8",
     "#E1BEE7", "#F3E5F5", "#673AB7", "#7986CB", "#9575CD", "#B39DDB",
-    
+
     // Pinks
     "#F8BBD9", "#F48FB1", "#F06292", "#EC407A", "#E91E63", "#C2185B",
     "#AD1457", "#880E4F", "#FF4081", "#FF80AB", "#FFAB91", "#FFCDD2",
     "#FCE4EC", "#F8BBD9", "#E1BEE7", "#D1C4E9", "#C5CAE9", "#BBDEFB",
-    
+
     // Grays
     "#85929E", "#95A5A6", "#BDC3C7", "#D5DBDB", "#EAEDED", "#F8F9FA",
     "#212529", "#343A40", "#495057", "#6C757D", "#ADB5BD", "#CED4DA",
@@ -120,7 +121,7 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({
   ];
 
   // Filter out the excluded color
-  const availableColors = excludeColor 
+  const availableColors = excludeColor
     ? presetColors.filter(color => color !== excludeColor)
     : presetColors;
 
@@ -166,7 +167,7 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({
                       colorPickerStyles.presetColor,
                       { backgroundColor: color },
                       selectedColor === color &&
-                        colorPickerStyles.selectedPreset,
+                      colorPickerStyles.selectedPreset,
                     ]}
                     onPress={() => setSelectedColor(color)}
                   >
@@ -294,7 +295,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
     if (typeof window === 'undefined') {
       return;
     }
-    
+
     try {
       setLoadingInstructors(true);
       const { data, error } = await supabase
@@ -564,7 +565,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
     if (typeof window === 'undefined') {
       return false;
     }
-    
+
     try {
       // Generate UUID for the course
       const courseId = generateUUID();
@@ -622,9 +623,9 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
         course_type: formData.courseType,
         semester: parseInt(
           formData.semester.split("st")[0] ||
-            formData.semester.split("nd")[0] ||
-            formData.semester.split("rd")[0] ||
-            formData.semester.split("th")[0]
+          formData.semester.split("nd")[0] ||
+          formData.semester.split("rd")[0] ||
+          formData.semester.split("th")[0]
         ),
         class_schedule: classScheduleJson,
         course_logo: courseLogoUrl,
@@ -733,7 +734,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
       animationType="slide"
       transparent
       onRequestClose={onClose}
-      style={{ pointerEvents: 'auto'}}
+      style={{ pointerEvents: 'auto' }}
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
@@ -818,7 +819,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                   style={[
                     styles.typeButton,
                     formData.courseType === "Core Curriculum" &&
-                      styles.selectedTypeButton,
+                    styles.selectedTypeButton,
                   ]}
                   onPress={() =>
                     handleInputChange("courseType", "Core Curriculum")
@@ -829,7 +830,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                     style={[
                       styles.typeText,
                       formData.courseType === "Core Curriculum" &&
-                        styles.selectedTypeText,
+                      styles.selectedTypeText,
                     ]}
                   >
                     Core{"\n"}Curriculum
@@ -840,7 +841,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                   style={[
                     styles.typeButton,
                     formData.courseType === "Elective" &&
-                      styles.selectedTypeButton,
+                    styles.selectedTypeButton,
                   ]}
                   onPress={() => handleInputChange("courseType", "Elective")}
                 >
@@ -849,7 +850,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                     style={[
                       styles.typeText,
                       formData.courseType === "Elective" &&
-                        styles.selectedTypeText,
+                      styles.selectedTypeText,
                     ]}
                   >
                     Elective{"\n"}Courses
@@ -921,9 +922,9 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                         style={[
                           styles.instructorDropdownItem,
                           formData.instructor === instructor.name &&
-                            styles.selectedInstructorDropdownItem,
+                          styles.selectedInstructorDropdownItem,
                           index === instructors.length - 1 &&
-                            styles.lastInstructorDropdownItem,
+                          styles.lastInstructorDropdownItem,
                         ]}
                         onPress={() => {
                           handleInputChange("instructor", instructor.name);
@@ -940,7 +941,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                             style={[
                               styles.instructorDropdownText,
                               formData.instructor === instructor.name &&
-                                styles.selectedInstructorDropdownText,
+                              styles.selectedInstructorDropdownText,
                             ]}
                           >
                             {instructor.name}
@@ -1005,9 +1006,9 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                         style={[
                           styles.dropdownItem,
                           formData.semester === semester &&
-                            styles.selectedDropdownItem,
+                          styles.selectedDropdownItem,
                           index === semesters.length - 1 &&
-                            styles.lastDropdownItem,
+                          styles.lastDropdownItem,
                         ]}
                         onPress={() => {
                           handleInputChange("semester", semester);
@@ -1019,7 +1020,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                           style={[
                             styles.dropdownItemText,
                             formData.semester === semester &&
-                              styles.selectedDropdownItemText,
+                            styles.selectedDropdownItemText,
                           ]}
                         >
                           {semester}
@@ -1135,7 +1136,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                             style={[
                               styles.dropdownArrow,
                               showDayPicker === index &&
-                                styles.dropdownArrowRotated,
+                              styles.dropdownArrowRotated,
                             ]}
                           >
                             ▼
@@ -1150,9 +1151,9 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                                 style={[
                                   styles.dayDropdownItem,
                                   schedule.day === day &&
-                                    styles.selectedDayDropdownItem,
+                                  styles.selectedDayDropdownItem,
                                   dayIndex === daysOfWeek.length - 1 &&
-                                    styles.lastDayDropdownItem,
+                                  styles.lastDayDropdownItem,
                                 ]}
                                 onPress={() => {
                                   updateSchedule(index, "day", day);
@@ -1164,7 +1165,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
                                   style={[
                                     styles.dayDropdownItemText,
                                     schedule.day === day &&
-                                      styles.selectedDayDropdownItemText,
+                                    styles.selectedDayDropdownItemText,
                                   ]}
                                 >
                                   {day}
@@ -1215,7 +1216,7 @@ const AddCoursesModal: React.FC<AddCoursesModalProps> = ({
             {/* Time Picker Modal */}
             {showTimePicker.show && (
               <DateTimePicker
-                value={new Date()}
+                value={getCurrentDate()}
                 mode="time"
                 is24Hour={true}
                 display={Platform.OS === "ios" ? "spinner" : "default"}
@@ -1496,7 +1497,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#B8C5D6",
     // Use CSS transform for better web compatibility
-    ...(Platform.OS === 'web' 
+    ...(Platform.OS === 'web'
       ? { transform: "rotate(0deg)" }
       : { transform: [{ rotate: "0deg" }] }
     ),

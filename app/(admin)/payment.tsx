@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { getCurrentDate, getCurrentDateString, getCurrentISOString } from "@/utils/testDate";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
@@ -327,7 +328,7 @@ const PaymentManagementPage = () => {
     }
 
     const query = searchQuery.toLowerCase().trim();
-    const filtered = paymentHistory.filter((payment) => 
+    const filtered = paymentHistory.filter((payment) =>
       payment.user_name.toLowerCase().includes(query) ||
       payment.email_id.toLowerCase().includes(query)
     );
@@ -530,9 +531,181 @@ const PaymentManagementPage = () => {
     }
   };
 
+  // Function to check and restore enrollment status when dues are cleared
+  const checkAndRestoreEnrollmentStatus = useCallback(async (userId: string, courseId: string) => {
+    try {
+      console.log(`🔍 Checking enrollment status restoration for user ${userId}, course ${courseId}`);
+
+      // Get user's current enrollment status for this course
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("enrolled_courses")
+        .eq("id", userId)
+        .single();
+
+      if (userError || !userData.enrolled_courses) {
+        console.log("❌ Could not fetch user enrollment data");
+        return;
+      }
+
+      // Find the enrollment for this specific course
+      const enrollment = userData.enrolled_courses.find((enroll: any) =>
+        enroll.course_id === courseId
+      );
+
+      if (!enrollment) {
+        console.log("❌ No enrollment found for this course");
+        return;
+      }
+
+      // Only process if status is currently 'pending'
+      if (enrollment.status !== 'pending') {
+        console.log(`✅ Enrollment status is already '${enrollment.status}', no action needed`);
+        return;
+      }
+
+      console.log("🔄 Found pending enrollment, checking if dues are cleared...");
+
+      // Get course enrollment date to calculate required payment months
+      const { data: courseData, error: courseError } = await supabase
+        .from('courses')
+        .select('enrolled_students')
+        .eq('id', courseId)
+        .single();
+
+      if (courseError || !courseData.enrolled_students) {
+        console.log("❌ Could not fetch course enrollment data");
+        return;
+      }
+
+      // Find user's enrollment date
+      const userEnrollment = courseData.enrolled_students.find(
+        (student: any) => student.user_id === userId
+      );
+
+      if (!userEnrollment || !userEnrollment.approve_date) {
+        console.log("❌ Could not find user enrollment date");
+        return;
+      }
+
+      const enrollmentDate = new Date(userEnrollment.approve_date);
+      const currentDate = getCurrentDate();
+
+      // Calculate all months from enrollment to current
+      const getMonthsBetween = (startDate: Date, endDate: Date): string[] => {
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+        const result: string[] = [];
+
+        const start = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+        const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+
+        while (start <= end) {
+          result.push(months[start.getMonth()]);
+          start.setMonth(start.getMonth() + 1);
+        }
+
+        return result;
+      };
+
+      const requiredMonths = getMonthsBetween(enrollmentDate, currentDate);
+      console.log(`📅 Required payment months: ${requiredMonths.join(', ')}`);
+
+      // Check payment status for all required months
+      const { data: feeData, error: feeError } = await supabase
+        .from('fees')
+        .select('*')
+        .eq('id', courseId)
+        .single();
+
+      if (feeError || !feeData) {
+        console.log("❌ Could not fetch fee data for course");
+        return;
+      }
+
+      let allMonthsPaid = true;
+      const paymentSummary: { month: string; status: string }[] = [];
+
+      for (const month of requiredMonths) {
+        const monthData = feeData[month];
+
+        if (!monthData || !Array.isArray(monthData)) {
+          allMonthsPaid = false;
+          paymentSummary.push({ month, status: 'not_paid' });
+          continue;
+        }
+
+        // Check if user has a successful payment for this month
+        const userPayment = monthData.find((payment: any) =>
+          payment.user_id === userId && payment.status === 'success'
+        );
+
+        if (!userPayment) {
+          allMonthsPaid = false;
+          paymentSummary.push({ month, status: 'not_paid' });
+        } else {
+          paymentSummary.push({ month, status: 'paid' });
+        }
+      }
+
+      console.log("💰 Payment Summary:", paymentSummary);
+
+      if (allMonthsPaid) {
+        console.log("✅ All dues cleared! Restoring enrollment status to 'success'");
+
+        // Update enrollment status back to 'success'
+        const updatedEnrollments = userData.enrolled_courses.map((enroll: any) => {
+          if (enroll.course_id === courseId) {
+            return {
+              ...enroll,
+              status: 'success',
+              restored_date: getCurrentISOString(),
+              restoration_reason: `Auto-restored by admin payment approval on ${currentDate.toLocaleDateString()}: All dues cleared`
+            };
+          }
+          return enroll;
+        });
+
+        const { error: updateError } = await supabase
+          .from('users')
+          .update({ enrolled_courses: updatedEnrollments })
+          .eq('id', userId);
+
+        if (updateError) {
+          console.error("❌ Error updating enrollment status:", updateError);
+        } else {
+          console.log("🎉 Successfully restored enrollment status to 'success'");
+          return true; // Indicate that status was restored
+        }
+      } else {
+        const unpaidMonths = paymentSummary
+          .filter(p => p.status === 'not_paid')
+          .map(p => p.month);
+        console.log(`⚠️  Still has unpaid months: ${unpaidMonths.join(', ')}`);
+      }
+
+      return false;
+    } catch (error) {
+      console.error("❌ Error in checkAndRestoreEnrollmentStatus:", error);
+      return false;
+    }
+  }, []);
+
   const approvePayment = async (payment: PendingPayment) => {
     try {
       setApproving(true);
+
+      // Get course information to check if it's an elective course
+      const { data: courseInfo, error: courseInfoError } = await supabase
+        .from("courses")
+        .select("course_type, course_duration, fees_total")
+        .eq("id", payment.course_id)
+        .single();
+
+      if (courseInfoError) {
+        console.error("Error fetching course info:", courseInfoError);
+        Alert.alert("Error", "Failed to fetch course information");
+        return;
+      }
 
       // Update the payment status in fees table
       const { data: feeData, error: fetchError } = await supabase
@@ -548,12 +721,12 @@ const PaymentManagementPage = () => {
       }
 
       const monthData = feeData[payment.month] as any[];
-      const currentTimestamp = new Date().toISOString();
-      
+      const currentTimestamp = getCurrentISOString();
+
       const updatedMonthData = monthData.map((p: any) => {
         if (p.user_id === payment.user_id && p.txn_id === payment.txn_id) {
-          return { 
-            ...p, 
+          return {
+            ...p,
             status: "success",
             approved_timestamp: currentTimestamp
           };
@@ -561,7 +734,7 @@ const PaymentManagementPage = () => {
         return p;
       });
 
-      // Update the fees table
+      // Update the fees table for current month
       const { error: updateError } = await supabase
         .from("fees")
         .update({ [payment.month]: updatedMonthData })
@@ -572,6 +745,81 @@ const PaymentManagementPage = () => {
         Alert.alert("Error", "Failed to update payment status");
         return;
       }
+
+      // Special logic for elective courses: auto-create success payments for course duration
+      if (courseInfo.course_type === 'Elective' && courseInfo.course_duration && courseInfo.fees_total) {
+        console.log(`🎓 Processing elective course payment for ${courseInfo.course_duration} months`);
+
+        // Calculate months to mark as paid starting from current month
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+        const currentDate = getCurrentDate();
+        const paymentDate = new Date(currentDate.getFullYear(), months.indexOf(payment.month), 1);
+
+        const monthsToProcess = [];
+        for (let i = 1; i < courseInfo.course_duration; i++) {
+          const nextMonth = new Date(paymentDate);
+          nextMonth.setMonth(paymentDate.getMonth() + i);
+          const monthName = months[nextMonth.getMonth()];
+          monthsToProcess.push(monthName);
+        }
+
+        console.log(`📅 Creating auto-payments for months: ${monthsToProcess.join(', ')}`);
+
+        // Create success payments for each month in the duration
+        for (const month of monthsToProcess) {
+          // Get existing data for this month
+          const { data: existingMonthData, error: monthFetchError } = await supabase
+            .from("fees")
+            .select(`"${month}"`)
+            .eq("id", payment.course_id)
+            .single();
+
+          if (monthFetchError && monthFetchError.code !== "PGRST116") {
+            console.error(`Error fetching data for ${month}:`, monthFetchError);
+            continue;
+          }
+
+          const currentMonthData = existingMonthData?.[month] || [];
+
+          // Check if user already has a payment for this month
+          const existingPayment = currentMonthData.find((p: any) => p.user_id === payment.user_id);
+
+          if (!existingPayment) {
+            // Create auto-payment record
+            const autoPaymentData = {
+              user_id: payment.user_id,
+              txn_id: `AUTO-${payment.txn_id}-${month}`,
+              ss_uploaded_path: `auto-generated-${month}`,
+              email_id: payment.email_id,
+              phone_number: payment.phone_number,
+              status: "success",
+              approved_timestamp: currentTimestamp,
+              auto_generated: true,
+              original_payment_month: payment.month,
+              course_duration_payment: true
+            };
+
+            const updatedMonthData = [...currentMonthData, autoPaymentData];
+
+            // Update the fees table for this month
+            const { error: monthUpdateError } = await supabase
+              .from("fees")
+              .update({ [month]: updatedMonthData })
+              .eq("id", payment.course_id);
+
+            if (monthUpdateError) {
+              console.error(`Error updating fees for ${month}:`, monthUpdateError);
+            } else {
+              console.log(`✅ Auto-created payment for ${month}`);
+            }
+          } else {
+            console.log(`⏭️  Payment already exists for ${month}, skipping auto-creation`);
+          }
+        }
+      }
+
+      // Check and restore enrollment status if dues are cleared
+      const statusRestored = await checkAndRestoreEnrollmentStatus(payment.user_id, payment.course_id);
 
       // Update enrolled_students in courses table
       const { data: courseData, error: fetchCourseError } = await supabase
@@ -585,7 +833,7 @@ const PaymentManagementPage = () => {
         // Don't fail the approval if we can't update enrolled_students
       } else {
         const currentEnrolledStudents = courseData.enrolled_students || [];
-        
+
         // Check if student is already enrolled
         const isAlreadyEnrolled = currentEnrolledStudents.some(
           (student: any) => student.user_id === payment.user_id
@@ -595,8 +843,8 @@ const PaymentManagementPage = () => {
           // Add new student enrollment record
           const newStudentRecord = {
             user_id: payment.user_id,
-            approve_date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
-            approving_time: new Date().toISOString() // Full timestamp
+            approve_date: getCurrentDateString(), // YYYY-MM-DD format
+            approving_time: getCurrentISOString() // Full timestamp
           };
 
           const updatedEnrolledStudents = [...currentEnrolledStudents, newStudentRecord];
@@ -623,7 +871,7 @@ const PaymentManagementPage = () => {
 
         const { error: userUpdateError } = await supabase
           .from("users")
-          .update({ 
+          .update({
             role: "student",
             enrolled_courses: [courseEnrollmentData]
           })
@@ -637,7 +885,7 @@ const PaymentManagementPage = () => {
           );
         }
       } else if (payment.user_role === "student") {
-        // For existing students: add course to enrolled_courses array
+        // For existing students: add course to enrolled_courses array (only if not already enrolled)
         const { data: userData, error: fetchUserError } = await supabase
           .from("users")
           .select("enrolled_courses")
@@ -652,20 +900,20 @@ const PaymentManagementPage = () => {
           );
         } else {
           const currentEnrolledCourses = userData.enrolled_courses || [];
-          
+
           // Check if course is already enrolled (check by course_id in the new format)
-          const isAlreadyEnrolled = currentEnrolledCourses.some((enrollment: any) => 
+          const isAlreadyEnrolled = currentEnrolledCourses.some((enrollment: any) =>
             enrollment.course_id === payment.course_id
           );
-          
+
           if (!isAlreadyEnrolled) {
             const courseEnrollmentData = {
               status: "success",
               course_id: payment.course_id
             };
-            
+
             const updatedEnrolledCourses = [...currentEnrolledCourses, courseEnrollmentData];
-            
+
             const { error: updateCoursesError } = await supabase
               .from("users")
               .update({ enrolled_courses: updatedEnrolledCourses })
@@ -682,7 +930,12 @@ const PaymentManagementPage = () => {
         }
       }
 
-      Alert.alert("Success", "Payment approved successfully!", [
+      // Show success message with status restoration info
+      const successMessage = statusRestored
+        ? "Payment approved successfully! Student's enrollment status has been restored to active."
+        : "Payment approved successfully!";
+
+      Alert.alert("Success", successMessage, [
         {
           text: "OK",
           onPress: () => {
@@ -789,7 +1042,7 @@ const PaymentManagementPage = () => {
 
   const handleMonthPress = async (month: string) => {
     if (!selectedCourse) return;
-    
+
     setSelectedMonth(month);
     setMonthsModalVisible(false);
     setHistoryModalVisible(true);
@@ -804,7 +1057,7 @@ const PaymentManagementPage = () => {
   // Calculate responsive columns and card width for course cards
   const getResponsiveLayout = useCallback(() => {
     const { width } = screenData;
-    
+
     // Define breakpoints
     if (width < 600) {
       // Mobile: 1 column
@@ -1035,8 +1288,8 @@ const PaymentManagementPage = () => {
                 {saving
                   ? "Saving..."
                   : paymentInfo
-                  ? "Update Information"
-                  : "Save Information"}
+                    ? "Update Information"
+                    : "Save Information"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1274,11 +1527,11 @@ const PaymentManagementPage = () => {
                   {(() => {
                     const { numColumns, cardWidth } = getResponsiveLayout();
                     const isMediumScreen = screenData.width < 900;
-                    
+
                     return courses.map((course) => (
                       <View key={course.id} style={[
-                        styles.courseCard, 
-                        { 
+                        styles.courseCard,
+                        {
                           backgroundColor: course.full_name_color,
                           width: numColumns === 1 ? '100%' : cardWidth,
                           minHeight: isSmallScreen ? 220 : isMediumScreen ? 260 : 280,
@@ -1290,20 +1543,20 @@ const PaymentManagementPage = () => {
                               {course.codename}
                             </Text>
                           </View>
-                          <Ionicons 
+                          <Ionicons
                             name={course.course_type === "Core Curriculum" ? "school-outline" : "briefcase-outline"}
                             size={isSmallScreen ? 24 : 26}
                             color="black"
                           />
                         </View>
-                        
-                        <Text style={[styles.courseTitle, { 
+
+                        <Text style={[styles.courseTitle, {
                           fontSize: isSmallScreen ? 18 : isMediumScreen ? 19 : 20,
                           marginBottom: isSmallScreen ? 12 : 16
                         }]}>
                           {course.full_name}
                         </Text>
-                        
+
                         <View style={styles.courseInfo}>
                           <View style={styles.infoRow}>
                             <Ionicons name="time-outline" size={isSmallScreen ? 14 : 16} color="black" />
@@ -1311,34 +1564,34 @@ const PaymentManagementPage = () => {
                               Course Duration: {course.course_duration ? `${course.course_duration} months` : 'Ongoing'}
                             </Text>
                           </View>
-                          
+
                           <View style={styles.infoRow}>
                             <Ionicons name="cash-outline" size={isSmallScreen ? 14 : 16} color="black" />
                             <Text style={[styles.infoText, { fontSize: isSmallScreen ? 14 : 16, color: 'black' }]}>
                               Course Fees: ₹{course.fees_monthly}/month
                             </Text>
                           </View>
-                          
+
                           <View style={styles.infoRow}>
                             <Text style={{ fontSize: isSmallScreen ? 14 : 16, fontWeight: '400', color: 'black' }}>
                               Includes 2 eBooks, 2 Notes & 2 Sample Question Set with PYQ solved
                             </Text>
                           </View>
                         </View>
-                        
+
                         <View style={styles.instructorSection}>
                           <View style={styles.instructorInfo}>
                             {course.instructor_image ? (
-                              <Image 
-                                source={{ uri: course.instructor_image }} 
-                                style={[styles.instructorImage, { 
+                              <Image
+                                source={{ uri: course.instructor_image }}
+                                style={[styles.instructorImage, {
                                   width: isSmallScreen ? 36 : 44,
                                   height: isSmallScreen ? 36 : 44,
                                   borderRadius: isSmallScreen ? 18 : 22
                                 }]}
                               />
                             ) : (
-                              <View style={[styles.instructorImagePlaceholder, { 
+                              <View style={[styles.instructorImagePlaceholder, {
                                 width: isSmallScreen ? 32 : 40,
                                 height: isSmallScreen ? 32 : 40,
                                 borderRadius: isSmallScreen ? 16 : 20
@@ -1355,8 +1608,8 @@ const PaymentManagementPage = () => {
                               </Text>
                             </View>
                           </View>
-                          
-                          <TouchableOpacity 
+
+                          <TouchableOpacity
                             style={styles.viewButton}
                             onPress={() => handleCourseViewPress(course)}
                           >
@@ -1484,7 +1737,7 @@ const PaymentManagementPage = () => {
                       {approving ? "Rejecting..." : "Reject Payment"}
                     </Text>
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={[
                       styles.approveButton,
@@ -1608,16 +1861,16 @@ const PaymentManagementPage = () => {
               <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 40 }}>
                 {filteredPaymentHistory.length === 0 ? (
                   <View style={styles.emptyState}>
-                    <Ionicons 
-                      name={searchQuery ? "search-outline" : "receipt-outline"} 
-                      size={60} 
-                      color="#666" 
+                    <Ionicons
+                      name={searchQuery ? "search-outline" : "receipt-outline"}
+                      size={60}
+                      color="#666"
                     />
                     <Text style={styles.emptyStateTitle}>
                       {searchQuery ? "No Matching Results" : "No Payments Found"}
                     </Text>
                     <Text style={styles.emptyStateText}>
-                      {searchQuery 
+                      {searchQuery
                         ? `No payments found matching "${searchQuery}"`
                         : `No successful payments recorded for ${selectedMonth}`
                       }
@@ -1675,7 +1928,7 @@ const PaymentManagementPage = () => {
         </View>
       </Modal>
 
-     
+
     </ScrollView>
   );
 };

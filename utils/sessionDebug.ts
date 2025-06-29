@@ -1,6 +1,7 @@
-// utils/sessionDebug.ts
+//import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { getCurrentISOString } from './testDate';
 
 /**
  * Debug utilities for session persistence during development
@@ -82,7 +83,7 @@ export class SessionDebug {
         hasSession: !!session,
         userId: session?.user?.id || 'None',
         email: session?.user?.email || 'None',
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentISOString()
       });
     });
   }

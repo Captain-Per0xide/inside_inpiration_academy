@@ -10,6 +10,7 @@ import StudentsIcon from "@/components/icons/StudentsIcon";
 import TeacherIcon from "@/components/icons/TeacherIcon";
 import TestSeriesIcon from "@/components/icons/TestSeriesIcon";
 import { supabase } from "@/lib/supabase";
+import { getCurrentDate, getCurrentISOString } from "@/utils/testDate";
 import { authService } from "@/services/authService";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerContentComponentProps, DrawerContentScrollView, DrawerItemList } from "@react-navigation/drawer";
@@ -27,11 +28,6 @@ interface UserData {
 }
 function CustomDrawerContent(props: DrawerContentComponentProps) {
   const [userData, setUserData] = useState<UserData>({});
-
-  // Helper function to get current date
-  const getCurrentDate = useCallback(() => {
-    return new Date();
-  }, []);
 
   // Helper function to get months between two dates
   const getMonthsBetween = useCallback((startDate: Date, endDate: Date): string[] => {
