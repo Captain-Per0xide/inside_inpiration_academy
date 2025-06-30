@@ -10,10 +10,10 @@ interface UserData {
     id?: string;
     email?: string;
     name?: string;
-    enrolled_courses?: Array<{
+    enrolled_courses?: {
         status: string;
         course_id: string;
-    }>;
+    }[];
 }
 
 interface Course {
@@ -45,10 +45,6 @@ const StudentsDashboard = () => {
     const [pendingPayments, setPendingPayments] = useState<Set<string>>(new Set());
     const [showPurchaseModal, setShowPurchaseModal] = useState(false);
     const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
-
-    useEffect(() => {
-        fetchUserData();
-    }, []);
 
     useEffect(() => {
         const onChange = (result: { window: any }) => {
@@ -128,7 +124,37 @@ const StudentsDashboard = () => {
         }
     }, [getCurrentMonthName]);
 
-    const fetchUserData = async () => {
+    const fetchOtherCourses = useCallback(async (enrolledCourses: { status: string; course_id: string }[] = []) => {
+        try {
+            setCoursesLoading(true);
+
+            const { data, error } = await supabase
+                .from('courses')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching courses:', error);
+                return;
+            }
+
+            // Extract course IDs from the new JSONB structure
+            const enrolledCourseIds = enrolledCourses.map(enrollment => enrollment.course_id);
+
+            // Filter out enrolled courses (both success and pending)
+            const availableCourses = data?.filter(course =>
+                !enrolledCourseIds.includes(course.id)
+            ) || [];
+
+            setOtherCourses(availableCourses);
+        } catch (error) {
+            console.error('Error fetching other courses:', error);
+        } finally {
+            setCoursesLoading(false);
+        }
+    }, []);
+
+    const fetchUserData = useCallback(async () => {
         setIsLoading(true);
 
         try {
@@ -171,42 +197,17 @@ const StudentsDashboard = () => {
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const fetchOtherCourses = async (enrolledCourses: Array<{status: string; course_id: string}> = []) => {
-        try {
-            setCoursesLoading(true);
-
-            const { data, error } = await supabase
-                .from('courses')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) {
-                console.error('Error fetching courses:', error);
-                return;
-            }
-
-            // Extract course IDs from the new JSONB structure
-            const enrolledCourseIds = enrolledCourses.map(enrollment => enrollment.course_id);
-
-            // Filter out enrolled courses (both success and pending)
-            const availableCourses = data?.filter(course => 
-                !enrolledCourseIds.includes(course.id)
-            ) || [];
-
-            setOtherCourses(availableCourses);
-        } catch (error) {
-            console.error('Error fetching other courses:', error);
-        } finally {
-            setCoursesLoading(false);
-        }
-    };
+    }, [checkPendingPayments, fetchOtherCourses]);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
         fetchUserData().finally(() => setRefreshing(false));
-    }, []);
+    }, [fetchUserData]);
+
+    // Effect to fetch user data on component mount
+    useEffect(() => {
+        fetchUserData();
+    }, [fetchUserData]);
 
     const handleBuyNow = (course: Course) => {
         // Check if there's a pending payment for this course
@@ -248,7 +249,7 @@ const StudentsDashboard = () => {
     // Calculate responsive layout
     const getResponsiveLayout = useCallback(() => {
         const { width } = screenData;
-        
+
         if (width < 600) {
             return { numColumns: 1, cardWidth: width - 40 };
         } else if (width < 900) {
@@ -285,23 +286,23 @@ const StudentsDashboard = () => {
                             {item.codename}
                         </Text>
                     </View>
-                    <Ionicons 
+                    <Ionicons
                         name={item.course_type === "Core Curriculum" ? "school-outline" : "briefcase-outline"}
                         size={isSmallScreen ? 24 : 26}
                         color="black"
                     />
                 </View>
-                
+
                 <Text style={[
                     styles.courseTitle,
-                    { 
+                    {
                         fontSize: isSmallScreen ? 18 : isMediumScreen ? 19 : 20,
                         marginBottom: isSmallScreen ? 12 : 16
                     }
                 ]}>
                     {item.full_name}
                 </Text>
-                
+
                 <View style={styles.courseInfo}>
                     <View style={styles.infoRow}>
                         <Ionicons name="time-outline" size={isSmallScreen ? 14 : 16} color="black" />
@@ -309,10 +310,10 @@ const StudentsDashboard = () => {
                             styles.infoText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                           Course Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
+                            Course Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
                         </Text>
                     </View>
-                    
+
                     <View style={styles.infoRow}>
                         <Ionicons name="cash-outline" size={isSmallScreen ? 14 : 16} color="black" />
                         <Text style={[
@@ -322,22 +323,22 @@ const StudentsDashboard = () => {
                             {getFeeLabel(item)}: {getFeeDisplay(item)}
                         </Text>
                     </View>
-                    
+
                     <View style={styles.infoRow}>
                         <Text style={{ fontSize: isSmallScreen ? 14 : 16, fontWeight: '400', color: 'black' }}>
                             Includes 2 eBooks, 2 Notes & 2 Sample Question Set with PYQ solved
                         </Text>
                     </View>
                 </View>
-                
+
                 <View style={styles.instructorSection}>
                     <View style={styles.instructorInfo}>
                         {item.instructor_image ? (
-                            <Image 
-                                source={{ uri: item.instructor_image }} 
+                            <Image
+                                source={{ uri: item.instructor_image }}
                                 style={[
                                     styles.instructorImage,
-                                    { 
+                                    {
                                         width: isSmallScreen ? 36 : 44,
                                         height: isSmallScreen ? 36 : 44,
                                         borderRadius: isSmallScreen ? 18 : 22
@@ -347,7 +348,7 @@ const StudentsDashboard = () => {
                         ) : (
                             <View style={[
                                 styles.instructorImagePlaceholder,
-                                { 
+                                {
                                     width: isSmallScreen ? 32 : 40,
                                     height: isSmallScreen ? 32 : 40,
                                     borderRadius: isSmallScreen ? 16 : 20
@@ -371,7 +372,7 @@ const StudentsDashboard = () => {
                             </Text>
                         </View>
                     </View>
-                    
+
                     <TouchableOpacity
                         style={[
                             hasPendingPayment ? styles.pendingButton : styles.buyNowButton,
@@ -419,7 +420,7 @@ const StudentsDashboard = () => {
     }
 
     return (
-        <ScrollView 
+        <ScrollView
             style={styles.container}
             refreshControl={
                 <RefreshControl
@@ -440,7 +441,7 @@ const StudentsDashboard = () => {
                 <Text style={styles.coursesSubtitle}>
                     Discover new courses to expand your learning journey
                 </Text>
-                
+
                 {coursesLoading ? (
                     <View style={styles.coursesLoadingContainer}>
                         <ActivityIndicator size="large" color="#2E4064" />
@@ -453,7 +454,7 @@ const StudentsDashboard = () => {
                             No other courses available at the moment
                         </Text>
                         <Text style={styles.emptyCoursesSubText}>
-                            You're enrolled in all available courses!
+                            You&apos;re enrolled in all available courses!
                         </Text>
                     </View>
                 ) : (

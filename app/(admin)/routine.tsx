@@ -6,7 +6,7 @@ const Routine: React.FC = () => {
         <ScrollView contentContainerStyle={styles.container}>
             <Text style={styles.title}>Admin Routine Page</Text>
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Today's Routine</Text>
+                <Text style={styles.sectionTitle}>Today&apos;s Routine</Text>
                 {/* Placeholder for routine items */}
                 <Text style={styles.placeholder}>No routines scheduled for today.</Text>
             </View>
