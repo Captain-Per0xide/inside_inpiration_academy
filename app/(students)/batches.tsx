@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, RefreshControl, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -74,10 +75,10 @@ const MyBatchesScreen = () => {
             } else {
                 setLoading(true);
             }
-            
+
             // Get current user session
             const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-            
+
             if (sessionError) {
                 console.error('Session error:', sessionError);
                 Alert.alert('Error', 'Failed to get user session');
@@ -156,24 +157,14 @@ const MyBatchesScreen = () => {
         fetchEnrolledCourses(true);
     };
 
-    const parseSchedule = (scheduleString: string) => {
-        try {
-            // Remove brackets and parse the schedule
-            const cleanSchedule = scheduleString.replace(/[\[\]]/g, '').trim();
-            return cleanSchedule;
-        } catch (error) {
-            return 'Schedule not available';
-        }
-    };
-
     const renderCourseItem = ({ item }: { item: Course }) => {
         const isSmallScreen = screenData.width < 600;
         const isPending = item.enrollmentStatus === 'pending';
-        
+
         return (
             <View style={[
-                styles.courseCard, 
-                { 
+                styles.courseCard,
+                {
                     backgroundColor: item.full_name_color,
                     opacity: isPending ? 0.7 : 1,
                 }
@@ -194,7 +185,7 @@ const MyBatchesScreen = () => {
                                 <Text style={styles.pendingBadgeText}>SUSPENDED</Text>
                             </View>
                         )}
-                        <Ionicons 
+                        <Ionicons
                             name={item.course_type === "Core Curriculum" ? "school-outline" : "briefcase-outline"}
                             size={isSmallScreen ? 24 : 26}
                             color="black"
@@ -202,24 +193,24 @@ const MyBatchesScreen = () => {
                         />
                     </View>
                 </View>
-                
+
                 <Text style={[
                     styles.courseTitle,
-                    { 
+                    {
                         fontSize: isSmallScreen ? 18 : 20,
                         marginBottom: isSmallScreen ? 12 : 16
                     }
                 ]}>
                     {item.full_name}
                 </Text>
-                
+
                 {isPending && (
                     <View style={styles.suspensionContainer}>
                         <View style={styles.suspensionHeader}>
                             <Ionicons name="warning" size={20} color="#DC2626" />
                             <Text style={styles.suspensionTitle}>ACCESS SUSPENDED</Text>
                         </View>
-                        
+
                         {item.suspensionReason ? (
                             <View style={styles.reasonContainer}>
                                 <Text style={styles.reasonLabel}>Reason:</Text>
@@ -232,7 +223,7 @@ const MyBatchesScreen = () => {
                                 Payment overdue - Contact admin or clear your dues immediately
                             </Text>
                         )}
-                        
+
                         {(item.overdueMonths ?? 0) > 0 && (
                             <View style={styles.overdueInfo}>
                                 <Ionicons name="time" size={16} color="#DC2626" />
@@ -241,7 +232,7 @@ const MyBatchesScreen = () => {
                                 </Text>
                             </View>
                         )}
-                        
+
                         <View style={styles.urgentAction}>
                             <Ionicons name="flash" size={16} color="#DC2626" />
                             <Text style={styles.urgentActionText}>
@@ -250,7 +241,7 @@ const MyBatchesScreen = () => {
                         </View>
                     </View>
                 )}
-                
+
                 <View style={styles.courseInfo}>
                     <View style={styles.infoRow}>
                         <Ionicons name="time-outline" size={isSmallScreen ? 14 : 16} color="black" />
@@ -258,10 +249,10 @@ const MyBatchesScreen = () => {
                             styles.infoText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                           Course Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
+                            Course Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
                         </Text>
                     </View>
-                    
+
                     <View style={styles.infoRow}>
                         <Ionicons name="cash-outline" size={isSmallScreen ? 14 : 16} color="black" />
                         <Text style={[
@@ -271,22 +262,22 @@ const MyBatchesScreen = () => {
                             {getFeeLabel(item)}: {getFeeDisplay(item)}
                         </Text>
                     </View>
-                    
+
                     <View style={styles.infoRow}>
                         <Text style={{ fontSize: isSmallScreen ? 14 : 16, fontWeight: '400', color: 'black' }}>
                             Includes 2 eBooks, 2 Notes & 2 Sample Question Set with PYQ solved
                         </Text>
                     </View>
                 </View>
-                
+
                 <View style={styles.instructorSection}>
                     <View style={styles.instructorInfo}>
                         {item.instructor_image ? (
-                            <Image 
-                                source={{ uri: item.instructor_image }} 
+                            <Image
+                                source={{ uri: item.instructor_image }}
                                 style={[
                                     styles.instructorImage,
-                                    { 
+                                    {
                                         width: isSmallScreen ? 36 : 44,
                                         height: isSmallScreen ? 36 : 44,
                                         borderRadius: isSmallScreen ? 18 : 22
@@ -296,7 +287,7 @@ const MyBatchesScreen = () => {
                         ) : (
                             <View style={[
                                 styles.instructorImagePlaceholder,
-                                { 
+                                {
                                     width: isSmallScreen ? 32 : 40,
                                     height: isSmallScreen ? 32 : 40,
                                     borderRadius: isSmallScreen ? 16 : 20
@@ -320,13 +311,17 @@ const MyBatchesScreen = () => {
                             </Text>
                         </View>
                     </View>
-                    
-                    <TouchableOpacity 
+
+                    <TouchableOpacity
                         style={[
                             styles.viewButton,
                             isPending && styles.viewButtonDisabled
                         ]}
                         disabled={isPending}
+                        onPress={() => router.push({
+                            pathname: '/batch-details',
+                            params: { courseId: item.id, courseName: item.full_name }
+                        })}
                     >
                         <Text style={[
                             styles.viewButtonText,
@@ -356,28 +351,28 @@ const MyBatchesScreen = () => {
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
                 <Text style={[styles.title, { fontSize: screenData.width < 600 ? 20 : 24 }]}>My Batches</Text>
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={styles.refreshButton}
                     onPress={handleManualRefresh}
                     disabled={refreshing}
                 >
-                    <Ionicons 
-                        name="refresh-outline" 
-                        size={screenData.width < 600 ? 22 : 24} 
-                        color="#6366F1" 
-                        style={{ 
-                            transform: [{ rotate: refreshing ? '360deg' : '0deg' }] 
+                    <Ionicons
+                        name="refresh-outline"
+                        size={screenData.width < 600 ? 22 : 24}
+                        color="#6366F1"
+                        style={{
+                            transform: [{ rotate: refreshing ? '360deg' : '0deg' }]
                         }}
                     />
                 </TouchableOpacity>
             </View>
-            
+
             {courses.length === 0 ? (
                 <View style={styles.emptyContainer}>
-                    <Ionicons 
-                        name="school-outline" 
-                        size={screenData.width < 600 ? 60 : 80} 
-                        color="#666" 
+                    <Ionicons
+                        name="school-outline"
+                        size={screenData.width < 600 ? 60 : 80}
+                        color="#666"
                     />
                     <Text style={[styles.emptyText, { fontSize: screenData.width < 600 ? 18 : 20 }]}>
                         No batches enrolled yet
@@ -385,7 +380,7 @@ const MyBatchesScreen = () => {
                     <Text style={[styles.emptySubText, { fontSize: screenData.width < 600 ? 14 : 16 }]}>
                         Contact admin to enroll in courses
                     </Text>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                         style={styles.refreshEmptyButton}
                         onPress={handleManualRefresh}
                         disabled={refreshing}

@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -18,13 +19,10 @@ import {
 interface PreviousYearQuestion {
     id: string;
     title: string;
-    description: string;
+    year: string;
     file_url: string;
     file_size: string;
     upload_date: string;
-    course_id: string;
-    year: string;
-    exam_type: string; // 'final' | 'midterm' | 'quiz' | 'assignment'
 }
 
 const PreviousYearQuestionsPage = () => {
@@ -36,28 +34,16 @@ const PreviousYearQuestionsPage = () => {
 
     // Update states
     const [updating, setUpdating] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [newQuestion, setNewQuestion] = useState({
         title: '',
-        description: '',
-        file_url: '',
-        file_size: '',
-        year: new Date().getFullYear().toString(),
-        exam_type: 'final'
+        year: '',
+        selectedFile: null as any
     });
 
     // Modal states
     const [showAddModal, setShowAddModal] = useState(false);
     const [editingQuestion, setEditingQuestion] = useState<PreviousYearQuestion | null>(null);
-
-    const examTypes = [
-        { value: 'final', label: 'Final Exam' },
-        { value: 'midterm', label: 'Midterm Exam' },
-        { value: 'quiz', label: 'Quiz' },
-        { value: 'assignment', label: 'Assignment' }
-    ];
-
-    const currentYear = new Date().getFullYear();
-    const years = Array.from({ length: 10 }, (_, i) => (currentYear - i).toString());
 
     useEffect(() => {
         const subscription = Dimensions.addEventListener('change', ({ window }) => {
@@ -72,14 +58,15 @@ const PreviousYearQuestionsPage = () => {
         try {
             setLoading(true);
             const { data, error } = await supabase
-                .from('course_previous_year_questions')
-                .select('*')
-                .eq('course_id', courseId)
-                .order('year', { ascending: false })
-                .order('upload_date', { ascending: false });
+                .from('courses')
+                .select('previous_year_questions')
+                .eq('id', courseId)
+                .single();
 
             if (error) throw error;
-            setQuestions(data || []);
+
+            const questionsData = data?.previous_year_questions || [];
+            setQuestions(questionsData);
         } catch (error) {
             console.error('Error fetching previous year questions:', error);
             Alert.alert('Error', 'Failed to load previous year questions');
@@ -96,38 +83,110 @@ const PreviousYearQuestionsPage = () => {
         router.back();
     };
 
+    const pickDocument = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/pdf',
+                copyToCacheDirectory: true
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const file = result.assets[0];
+                setNewQuestion(prev => ({
+                    ...prev,
+                    selectedFile: file,
+                    title: prev.title || file.name.replace('.pdf', '')
+                }));
+            }
+        } catch (error) {
+            console.error('Error picking document:', error);
+            Alert.alert('Error', 'Failed to pick document');
+        }
+    };
+
+    const uploadFile = async (file: any, fileName: string) => {
+        try {
+            setUploading(true);
+
+            const fileExt = 'pdf';
+            const filePath = `Course-data/${courseId}/Previous Year Questions/${fileName}.${fileExt}`;
+
+            // Create FormData for file upload
+            const formData = new FormData();
+            formData.append('file', {
+                uri: file.uri,
+                type: 'application/pdf',
+                name: `${fileName}.${fileExt}`
+            } as any);
+
+            // Upload to Supabase Storage
+            const { error } = await supabase.storage
+                .from('inside-inspiration-academy-assets')
+                .upload(filePath, formData, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+
+            if (error) throw error;
+
+            // Get public URL
+            const { data: publicData } = supabase.storage
+                .from('inside-inspiration-academy-assets')
+                .getPublicUrl(filePath);
+
+            return publicData.publicUrl;
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            throw error;
+        } finally {
+            setUploading(false);
+        }
+    };
+
     const handleAddQuestion = async () => {
-        if (!newQuestion.title.trim() || !newQuestion.file_url.trim()) {
-            Alert.alert('Error', 'Please fill in title and file URL');
+        if (!newQuestion.title.trim() || !newQuestion.year.trim() || !newQuestion.selectedFile) {
+            Alert.alert('Error', 'Please fill in all fields and select a PDF file');
             return;
         }
 
         try {
             setUpdating(true);
-            const { error } = await supabase
-                .from('course_previous_year_questions')
-                .insert({
-                    course_id: courseId,
-                    title: newQuestion.title.trim(),
-                    description: newQuestion.description.trim(),
-                    file_url: newQuestion.file_url.trim(),
-                    file_size: newQuestion.file_size.trim() || 'Unknown',
-                    year: newQuestion.year,
-                    exam_type: newQuestion.exam_type,
-                    upload_date: new Date().toISOString()
-                });
 
-            if (error) throw error;
+            // Upload file to storage
+            const fileUrl = await uploadFile(newQuestion.selectedFile, newQuestion.title);
+
+            // Create new question object
+            const newQuestionData = {
+                id: Date.now().toString(),
+                title: newQuestion.title.trim(),
+                year: newQuestion.year.trim(),
+                file_url: fileUrl,
+                file_size: formatFileSize(newQuestion.selectedFile.size || 0),
+                upload_date: new Date().toISOString()
+            };
+
+            // Get current questions
+            const { data: currentData, error: fetchError } = await supabase
+                .from('courses')
+                .select('previous_year_questions')
+                .eq('id', courseId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentQuestions = currentData?.previous_year_questions || [];
+            const updatedQuestions = [...currentQuestions, newQuestionData];
+
+            // Update courses table
+            const { error: updateError } = await supabase
+                .from('courses')
+                .update({ previous_year_questions: updatedQuestions })
+                .eq('id', courseId);
+
+            if (updateError) throw updateError;
 
             Alert.alert('Success', 'Previous year question added successfully!');
-            setNewQuestion({
-                title: '',
-                description: '',
-                file_url: '',
-                file_size: '',
-                year: new Date().getFullYear().toString(),
-                exam_type: 'final'
-            });
+            setNewQuestion({ title: '', year: '', selectedFile: null });
             setShowAddModal(false);
             fetchQuestions();
         } catch (error) {
@@ -139,26 +198,35 @@ const PreviousYearQuestionsPage = () => {
     };
 
     const handleEditQuestion = async () => {
-        if (!editingQuestion || !editingQuestion.title.trim() || !editingQuestion.file_url.trim()) {
-            Alert.alert('Error', 'Please fill in title and file URL');
+        if (!editingQuestion || !editingQuestion.title.trim() || !editingQuestion.year.trim()) {
+            Alert.alert('Error', 'Please fill in all fields');
             return;
         }
 
         try {
             setUpdating(true);
-            const { error } = await supabase
-                .from('course_previous_year_questions')
-                .update({
-                    title: editingQuestion.title.trim(),
-                    description: editingQuestion.description.trim(),
-                    file_url: editingQuestion.file_url.trim(),
-                    file_size: editingQuestion.file_size.trim() || 'Unknown',
-                    year: editingQuestion.year,
-                    exam_type: editingQuestion.exam_type
-                })
-                .eq('id', editingQuestion.id);
 
-            if (error) throw error;
+            // Get current questions
+            const { data: currentData, error: fetchError } = await supabase
+                .from('courses')
+                .select('previous_year_questions')
+                .eq('id', courseId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentQuestions = currentData?.previous_year_questions || [];
+            const updatedQuestions = currentQuestions.map((question: PreviousYearQuestion) =>
+                question.id === editingQuestion.id ? editingQuestion : question
+            );
+
+            // Update courses table
+            const { error: updateError } = await supabase
+                .from('courses')
+                .update({ previous_year_questions: updatedQuestions })
+                .eq('id', courseId);
+
+            if (updateError) throw updateError;
 
             Alert.alert('Success', 'Previous year question updated successfully!');
             setEditingQuestion(null);
@@ -182,12 +250,26 @@ const PreviousYearQuestionsPage = () => {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            const { error } = await supabase
-                                .from('course_previous_year_questions')
-                                .delete()
-                                .eq('id', question.id);
+                            // Get current questions
+                            const { data: currentData, error: fetchError } = await supabase
+                                .from('courses')
+                                .select('previous_year_questions')
+                                .eq('id', courseId)
+                                .single();
 
-                            if (error) throw error;
+                            if (fetchError) throw fetchError;
+
+                            const currentQuestions = currentData?.previous_year_questions || [];
+                            const updatedQuestions = currentQuestions.filter((q: PreviousYearQuestion) => q.id !== question.id);
+
+                            // Update courses table
+                            const { error: updateError } = await supabase
+                                .from('courses')
+                                .update({ previous_year_questions: updatedQuestions })
+                                .eq('id', courseId);
+
+                            if (updateError) throw updateError;
+
                             fetchQuestions();
                         } catch (error) {
                             console.error('Error deleting previous year question:', error);
@@ -199,52 +281,174 @@ const PreviousYearQuestionsPage = () => {
         );
     };
 
+    const formatFileSize = (bytes: number) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
     const handleOpenFile = (url: string) => {
         Linking.openURL(url).catch(() => {
             Alert.alert('Error', 'Unable to open file');
         });
     };
 
-    const getExamTypeIcon = (type: string) => {
-        switch (type) {
-            case 'final': return 'school';
-            case 'midterm': return 'library';
-            case 'quiz': return 'help-circle';
-            case 'assignment': return 'document-text';
-            default: return 'document';
-        }
+    const getYearColor = (year: string) => {
+        const currentYear = new Date().getFullYear();
+        const questionYear = parseInt(year);
+
+        if (questionYear === currentYear) return '#10B981';
+        if (questionYear >= currentYear - 2) return '#F59E0B';
+        return '#6B7280';
     };
 
-    const getExamTypeColor = (type: string) => {
-        switch (type) {
-            case 'final': return '#DC2626';
-            case 'midterm': return '#2563EB';
-            case 'quiz': return '#F59E0B';
-            case 'assignment': return '#059669';
-            default: return '#6B7280';
-        }
-    };
+    const getYearBg = (year: string) => {
+        const currentYear = new Date().getFullYear();
+        const questionYear = parseInt(year);
 
-    const getExamTypeBg = (type: string) => {
-        switch (type) {
-            case 'final': return '#FEF2F2';
-            case 'midterm': return '#EFF6FF';
-            case 'quiz': return '#FFF3E0';
-            case 'assignment': return '#ECFDF5';
-            default: return '#F3F4F6';
-        }
+        if (questionYear === currentYear) return '#D1FAE5';
+        if (questionYear >= currentYear - 2) return '#FEF3C7';
+        return '#F3F4F6';
     };
-
-    const groupedQuestions = questions.reduce((acc, question) => {
-        const year = question.year;
-        if (!acc[year]) {
-            acc[year] = [];
-        }
-        acc[year].push(question);
-        return acc;
-    }, {} as Record<string, PreviousYearQuestion[]>);
 
     const isSmallScreen = screenData.width < 600;
+
+    const renderViewContent = () => {
+        if (loading) {
+            return (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#2E4064" />
+                    <Text style={[styles.loadingText, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                        Loading Previous Year Questions...
+                    </Text>
+                </View>
+            );
+        }
+
+        if (questions.length === 0) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <Ionicons name="time-outline" size={64} color="#D1D5DB" />
+                    <Text style={[styles.emptyTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+                        No Previous Year Questions Available
+                    </Text>
+                    <Text style={[styles.emptyDescription, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                        There are no previous year questions uploaded for this course yet. Check back later or contact your instructor.
+                    </Text>
+                </View>
+            );
+        }
+
+        // Sort questions by year (newest first)
+        const sortedQuestions = [...questions].sort((a, b) => parseInt(b.year) - parseInt(a.year));
+
+        return (
+            <View style={styles.questionsList}>
+                {sortedQuestions.map((question) => (
+                    <View key={question.id} style={styles.questionCard}>
+                        <View style={styles.questionHeader}>
+                            <View style={[styles.questionIcon, { backgroundColor: getYearBg(question.year) }]}>
+                                <Text style={[styles.yearText, { color: getYearColor(question.year), fontSize: isSmallScreen ? 12 : 14 }]}>
+                                    {question.year}
+                                </Text>
+                            </View>
+                            <View style={styles.questionInfo}>
+                                <Text style={[styles.questionTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                                    {question.title}
+                                </Text>
+                                <View style={[styles.yearBadge, { backgroundColor: getYearBg(question.year) }]}>
+                                    <Ionicons name="calendar" size={14} color={getYearColor(question.year)} />
+                                    <Text style={[styles.yearBadgeText, { color: getYearColor(question.year), fontSize: isSmallScreen ? 12 : 14 }]}>
+                                        Year {question.year}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        <View style={styles.questionMeta}>
+                            <View style={styles.metaItem}>
+                                <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                    Uploaded: {new Date(question.upload_date).toLocaleDateString()}
+                                </Text>
+                            </View>
+                            <View style={styles.metaItem}>
+                                <Ionicons name="document-outline" size={16} color="#6B7280" />
+                                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                    {question.file_size}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.downloadButton}
+                            onPress={() => handleOpenFile(question.file_url)}
+                        >
+                            <Ionicons name="download-outline" size={20} color="#fff" />
+                            <Text style={[styles.downloadButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                Download PDF
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                ))}
+            </View>
+        );
+    };
+
+    const renderUpdateContent = () => {
+        return (
+            <View style={styles.updateContent}>
+                <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={() => setShowAddModal(true)}
+                >
+                    <Ionicons name="add-circle-outline" size={24} color="#fff" />
+                    <Text style={[styles.addButtonText, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                        Add New Previous Year Question
+                    </Text>
+                </TouchableOpacity>
+
+                {questions.length > 0 && (
+                    <View style={styles.manageSection}>
+                        <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+                            Manage Previous Year Questions
+                        </Text>
+                        {questions.sort((a, b) => parseInt(b.year) - parseInt(a.year)).map((question) => (
+                            <View key={question.id} style={styles.manageCard}>
+                                <View style={styles.manageInfo}>
+                                    <Text style={[styles.manageTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        {question.title}
+                                    </Text>
+                                    <Text style={[styles.manageYear, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                        Year: {question.year}
+                                    </Text>
+                                    <Text style={[styles.manageDate, { fontSize: isSmallScreen ? 10 : 12 }]}>
+                                        {new Date(question.upload_date).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                                <View style={styles.manageActions}>
+                                    <TouchableOpacity
+                                        style={styles.editButton}
+                                        onPress={() => setEditingQuestion({ ...question })}
+                                    >
+                                        <Ionicons name="pencil" size={16} color="#2563EB" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.deleteButton}
+                                        onPress={() => handleDeleteQuestion(question)}
+                                    >
+                                        <Ionicons name="trash" size={16} color="#DC2626" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                )}
+            </View>
+        );
+    };
 
     return (
         <>
@@ -259,7 +463,7 @@ const PreviousYearQuestionsPage = () => {
                         <Text style={[styles.headerTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
                             Previous Year Questions
                         </Text>
-                        <Text style={[styles.headerSubtitle, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                        <Text style={[styles.headerSubtitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
                             {courseName}
                         </Text>
                     </View>
@@ -276,7 +480,7 @@ const PreviousYearQuestionsPage = () => {
                             activeTab === 'view' && styles.activeTabText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                            View Questions ({questions.length})
+                            View Questions
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -296,156 +500,11 @@ const PreviousYearQuestionsPage = () => {
                 {/* Content */}
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     {activeTab === 'view' ? (
-                        // View Tab Content
                         <View style={styles.viewContent}>
-                            {loading ? (
-                                <View style={styles.loadingContainer}>
-                                    <ActivityIndicator size="large" color="#2E4064" />
-                                    <Text style={styles.loadingText}>Loading previous year questions...</Text>
-                                </View>
-                            ) : questions.length === 0 ? (
-                                <View style={styles.emptyContainer}>
-                                    <Ionicons name="archive-outline" size={80} color="#9CA3AF" />
-                                    <Text style={[styles.emptyTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-                                        No Previous Year Questions Available
-                                    </Text>
-                                    <Text style={[styles.emptyDescription, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                                        Previous year questions will appear here once they are uploaded
-                                    </Text>
-                                </View>
-                            ) : (
-                                <View style={styles.questionsList}>
-                                    {Object.keys(groupedQuestions)
-                                        .sort((a, b) => parseInt(b) - parseInt(a))
-                                        .map((year) => (
-                                            <View key={year} style={styles.yearSection}>
-                                                <View style={styles.yearHeader}>
-                                                    <Text style={[styles.yearTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-                                                        Year {year}
-                                                    </Text>
-                                                    <Text style={[styles.yearCount, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                                                        {groupedQuestions[year].length} question{groupedQuestions[year].length !== 1 ? 's' : ''}
-                                                    </Text>
-                                                </View>
-
-                                                {groupedQuestions[year].map((question) => (
-                                                    <View key={question.id} style={styles.questionCard}>
-                                                        <View style={styles.questionHeader}>
-                                                            <View style={[styles.questionIcon, { backgroundColor: getExamTypeBg(question.exam_type) }]}>
-                                                                <Ionicons
-                                                                    name={getExamTypeIcon(question.exam_type) as any}
-                                                                    size={24}
-                                                                    color={getExamTypeColor(question.exam_type)}
-                                                                />
-                                                            </View>
-                                                            <View style={styles.questionInfo}>
-                                                                <Text style={[styles.questionTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                                                    {question.title}
-                                                                </Text>
-                                                                {question.description && (
-                                                                    <Text style={[styles.questionDescription, { fontSize: isSmallScreen ? 14 : 15 }]}>
-                                                                        {question.description}
-                                                                    </Text>
-                                                                )}
-                                                                <View style={styles.badgeContainer}>
-                                                                    <View style={[styles.examTypeBadge, { backgroundColor: getExamTypeBg(question.exam_type) }]}>
-                                                                        <Text style={[styles.examTypeText, {
-                                                                            color: getExamTypeColor(question.exam_type),
-                                                                            fontSize: isSmallScreen ? 12 : 13
-                                                                        }]}>
-                                                                            {examTypes.find(t => t.value === question.exam_type)?.label || question.exam_type}
-                                                                        </Text>
-                                                                    </View>
-                                                                    <View style={styles.yearBadge}>
-                                                                        <Text style={[styles.yearBadgeText, { fontSize: isSmallScreen ? 12 : 13 }]}>
-                                                                            {question.year}
-                                                                        </Text>
-                                                                    </View>
-                                                                </View>
-                                                            </View>
-                                                        </View>
-
-                                                        <View style={styles.questionMeta}>
-                                                            <View style={styles.metaItem}>
-                                                                <Ionicons name="download-outline" size={16} color="#6B7280" />
-                                                                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                                    {question.file_size}
-                                                                </Text>
-                                                            </View>
-                                                            <View style={styles.metaItem}>
-                                                                <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                                                                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                                    {new Date(question.upload_date).toLocaleDateString()}
-                                                                </Text>
-                                                            </View>
-                                                        </View>
-
-                                                        <TouchableOpacity
-                                                            style={styles.downloadButton}
-                                                            onPress={() => handleOpenFile(question.file_url)}
-                                                        >
-                                                            <Ionicons name="download" size={16} color="#fff" />
-                                                            <Text style={[styles.downloadButtonText, { fontSize: isSmallScreen ? 14 : 15 }]}>
-                                                                Download
-                                                            </Text>
-                                                        </TouchableOpacity>
-                                                    </View>
-                                                ))}
-                                            </View>
-                                        ))}
-                                </View>
-                            )}
+                            {renderViewContent()}
                         </View>
                     ) : (
-                        // Update Tab Content
-                        <View style={styles.updateContent}>
-                            <TouchableOpacity
-                                style={styles.addButton}
-                                onPress={() => setShowAddModal(true)}
-                            >
-                                <Ionicons name="add-circle" size={24} color="#fff" />
-                                <Text style={[styles.addButtonText, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                    Add Previous Year Question
-                                </Text>
-                            </TouchableOpacity>
-
-                            {questions.length > 0 && (
-                                <View style={styles.manageSection}>
-                                    <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-                                        Manage Existing Questions
-                                    </Text>
-                                    {questions.map((question) => (
-                                        <View key={question.id} style={styles.manageCard}>
-                                            <View style={styles.manageInfo}>
-                                                <Text style={[styles.manageTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                                    {question.title}
-                                                </Text>
-                                                <Text style={[styles.manageType, { fontSize: isSmallScreen ? 11 : 12 }]}>
-                                                    {examTypes.find(t => t.value === question.exam_type)?.label} - {question.year}
-                                                </Text>
-                                                <Text style={[styles.manageDate, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                    Uploaded: {new Date(question.upload_date).toLocaleDateString()}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.manageActions}>
-                                                <TouchableOpacity
-                                                    style={styles.editButton}
-                                                    onPress={() => setEditingQuestion(question)}
-                                                >
-                                                    <Ionicons name="pencil" size={16} color="#3B82F6" />
-                                                </TouchableOpacity>
-                                                <TouchableOpacity
-                                                    style={styles.deleteButton}
-                                                    onPress={() => handleDeleteQuestion(question)}
-                                                >
-                                                    <Ionicons name="trash" size={16} color="#EF4444" />
-                                                </TouchableOpacity>
-                                            </View>
-                                        </View>
-                                    ))}
-                                </View>
-                            )}
-                        </View>
+                        renderUpdateContent()
                     )}
                 </ScrollView>
 
@@ -457,154 +516,94 @@ const PreviousYearQuestionsPage = () => {
                     onRequestClose={() => {
                         setShowAddModal(false);
                         setEditingQuestion(null);
+                        setNewQuestion({ title: '', year: '', selectedFile: null });
                     }}
                 >
                     <View style={styles.modalOverlay}>
-                        <View style={[styles.modalContent, { maxWidth: isSmallScreen ? screenData.width - 40 : 500 }]}>
+                        <View style={[styles.modalContent, { width: isSmallScreen ? '100%' : '80%' }]}>
                             <View style={styles.modalHeader}>
-                                <Text style={[styles.modalTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-                                    {editingQuestion ? 'Edit Previous Year Question' : 'Add Previous Year Question'}
+                                <Text style={[styles.modalTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                                    {editingQuestion ? 'Edit Previous Year Question' : 'Add New Previous Year Question'}
                                 </Text>
                                 <TouchableOpacity
                                     style={styles.modalCloseButton}
                                     onPress={() => {
                                         setShowAddModal(false);
                                         setEditingQuestion(null);
+                                        setNewQuestion({ title: '', year: '', selectedFile: null });
                                     }}
                                 >
-                                    <Ionicons name="close" size={24} color="#6B7280" />
+                                    <Ionicons name="close" size={20} color="#6B7280" />
                                 </TouchableOpacity>
                             </View>
 
-                            <ScrollView style={styles.modalBody}>
+                            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                                 <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>Title *</Text>
+                                    <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Title *
+                                    </Text>
                                     <TextInput
-                                        style={styles.textInput}
-                                        placeholder="Enter question paper title"
+                                        style={[styles.textInput, { fontSize: isSmallScreen ? 14 : 16 }]}
                                         value={editingQuestion ? editingQuestion.title : newQuestion.title}
                                         onChangeText={(text) => {
                                             if (editingQuestion) {
-                                                setEditingQuestion({ ...editingQuestion, title: text });
+                                                setEditingQuestion(prev => prev ? { ...prev, title: text } : null);
                                             } else {
-                                                setNewQuestion({ ...newQuestion, title: text });
+                                                setNewQuestion(prev => ({ ...prev, title: text }));
                                             }
                                         }}
+                                        placeholder="Enter question title"
+                                        placeholderTextColor="#9CA3AF"
                                     />
                                 </View>
 
-                                <View style={styles.twoColumnRow}>
-                                    <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                                        <Text style={styles.inputLabel}>Year *</Text>
-                                        <View style={styles.yearSelector}>
-                                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.yearScrollView}>
-                                                {years.map((year) => (
-                                                    <TouchableOpacity
-                                                        key={year}
-                                                        style={[
-                                                            styles.yearOption,
-                                                            (editingQuestion ? editingQuestion.year : newQuestion.year) === year && styles.selectedYearOption
-                                                        ]}
-                                                        onPress={() => {
-                                                            if (editingQuestion) {
-                                                                setEditingQuestion({ ...editingQuestion, year });
-                                                            } else {
-                                                                setNewQuestion({ ...newQuestion, year });
-                                                            }
-                                                        }}
-                                                    >
-                                                        <Text style={[
-                                                            styles.yearOptionText,
-                                                            (editingQuestion ? editingQuestion.year : newQuestion.year) === year && styles.selectedYearOptionText
-                                                        ]}>
-                                                            {year}
-                                                        </Text>
-                                                    </TouchableOpacity>
-                                                ))}
-                                            </ScrollView>
-                                        </View>
+                                <View style={styles.inputGroup}>
+                                    <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Year *
+                                    </Text>
+                                    <TextInput
+                                        style={[styles.textInput, { fontSize: isSmallScreen ? 14 : 16 }]}
+                                        value={editingQuestion ? editingQuestion.year : newQuestion.year}
+                                        onChangeText={(text) => {
+                                            // Only allow numeric input
+                                            const numericText = text.replace(/[^0-9]/g, '');
+                                            if (editingQuestion) {
+                                                setEditingQuestion(prev => prev ? { ...prev, year: numericText } : null);
+                                            } else {
+                                                setNewQuestion(prev => ({ ...prev, year: numericText }));
+                                            }
+                                        }}
+                                        placeholder="Enter year (e.g., 2023)"
+                                        placeholderTextColor="#9CA3AF"
+                                        keyboardType="numeric"
+                                        maxLength={4}
+                                    />
+                                </View>
+
+                                {!editingQuestion && (
+                                    <View style={styles.inputGroup}>
+                                        <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                            PDF File *
+                                        </Text>
+                                        <TouchableOpacity
+                                            style={[styles.filePickerButton, newQuestion.selectedFile && styles.fileSelectedButton]}
+                                            onPress={pickDocument}
+                                        >
+                                            <Ionicons
+                                                name={newQuestion.selectedFile ? "document" : "document-attach-outline"}
+                                                size={20}
+                                                color={newQuestion.selectedFile ? "#10B981" : "#6B7280"}
+                                            />
+                                            <Text style={[
+                                                styles.filePickerText,
+                                                newQuestion.selectedFile && styles.fileSelectedText,
+                                                { fontSize: isSmallScreen ? 14 : 16 }
+                                            ]}>
+                                                {newQuestion.selectedFile ? newQuestion.selectedFile.name : 'Select PDF File'}
+                                            </Text>
+                                        </TouchableOpacity>
                                     </View>
-
-                                    <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                                        <Text style={styles.inputLabel}>Exam Type *</Text>
-                                        <View style={styles.typeSelector}>
-                                            {examTypes.map((type) => (
-                                                <TouchableOpacity
-                                                    key={type.value}
-                                                    style={[
-                                                        styles.typeOption,
-                                                        (editingQuestion ? editingQuestion.exam_type : newQuestion.exam_type) === type.value && styles.selectedTypeOption
-                                                    ]}
-                                                    onPress={() => {
-                                                        if (editingQuestion) {
-                                                            setEditingQuestion({ ...editingQuestion, exam_type: type.value });
-                                                        } else {
-                                                            setNewQuestion({ ...newQuestion, exam_type: type.value });
-                                                        }
-                                                    }}
-                                                >
-                                                    <Text style={[
-                                                        styles.typeOptionText,
-                                                        (editingQuestion ? editingQuestion.exam_type : newQuestion.exam_type) === type.value && styles.selectedTypeOptionText,
-                                                        { fontSize: isSmallScreen ? 13 : 14 }
-                                                    ]}>
-                                                        {type.label}
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            ))}
-                                        </View>
-                                    </View>
-                                </View>
-
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>Description</Text>
-                                    <TextInput
-                                        style={[styles.textInput, styles.textArea]}
-                                        placeholder="Enter question paper description"
-                                        multiline
-                                        numberOfLines={4}
-                                        value={editingQuestion ? editingQuestion.description : newQuestion.description}
-                                        onChangeText={(text) => {
-                                            if (editingQuestion) {
-                                                setEditingQuestion({ ...editingQuestion, description: text });
-                                            } else {
-                                                setNewQuestion({ ...newQuestion, description: text });
-                                            }
-                                        }}
-                                    />
-                                </View>
-
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>File URL *</Text>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="Enter file download URL"
-                                        value={editingQuestion ? editingQuestion.file_url : newQuestion.file_url}
-                                        onChangeText={(text) => {
-                                            if (editingQuestion) {
-                                                setEditingQuestion({ ...editingQuestion, file_url: text });
-                                            } else {
-                                                setNewQuestion({ ...newQuestion, file_url: text });
-                                            }
-                                        }}
-                                    />
-                                </View>
-
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>File Size</Text>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="e.g., 1.5 MB"
-                                        value={editingQuestion ? editingQuestion.file_size : newQuestion.file_size}
-                                        onChangeText={(text) => {
-                                            if (editingQuestion) {
-                                                setEditingQuestion({ ...editingQuestion, file_size: text });
-                                            } else {
-                                                setNewQuestion({ ...newQuestion, file_size: text });
-                                            }
-                                        }}
-                                    />
-                                </View>
+                                )}
                             </ScrollView>
 
                             <View style={styles.modalActions}>
@@ -613,18 +612,28 @@ const PreviousYearQuestionsPage = () => {
                                     onPress={() => {
                                         setShowAddModal(false);
                                         setEditingQuestion(null);
+                                        setNewQuestion({ title: '', year: '', selectedFile: null });
                                     }}
                                 >
-                                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                                    <Text style={[styles.cancelButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Cancel
+                                    </Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
-                                    style={[styles.saveButton, updating && styles.disabledButton]}
+                                    style={[
+                                        styles.saveButton,
+                                        (updating || uploading) && styles.disabledButton
+                                    ]}
                                     onPress={editingQuestion ? handleEditQuestion : handleAddQuestion}
-                                    disabled={updating}
+                                    disabled={updating || uploading}
                                 >
-                                    <Text style={styles.saveButtonText}>
-                                        {updating ? 'Saving...' : editingQuestion ? 'Update' : 'Add'}
-                                    </Text>
+                                    {(updating || uploading) ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <Text style={[styles.saveButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                            {editingQuestion ? 'Update' : 'Add Question'}
+                                        </Text>
+                                    )}
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -710,7 +719,6 @@ const styles = {
     loadingText: {
         marginTop: 16,
         color: '#6B7280',
-        fontSize: 16,
     },
     emptyContainer: {
         flex: 1,
@@ -730,31 +738,12 @@ const styles = {
         paddingHorizontal: 20,
     },
     questionsList: {
-        gap: 24,
-    },
-    yearSection: {
-        marginBottom: 8,
-    },
-    yearHeader: {
-        flexDirection: 'row' as const,
-        justifyContent: 'space-between' as const,
-        alignItems: 'center' as const,
-        marginBottom: 16,
-        paddingHorizontal: 4,
-    },
-    yearTitle: {
-        fontWeight: 'bold' as const,
-        color: '#1F2937',
-    },
-    yearCount: {
-        color: '#6B7280',
-        fontWeight: '500' as const,
+        gap: 16,
     },
     questionCard: {
         backgroundColor: '#fff',
         borderRadius: 12,
         padding: 20,
-        marginBottom: 12,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -773,39 +762,27 @@ const styles = {
         alignItems: 'center' as const,
         marginRight: 16,
     },
+    yearText: {
+        fontWeight: 'bold' as const,
+    },
     questionInfo: {
         flex: 1,
     },
     questionTitle: {
         fontWeight: 'bold' as const,
         color: '#374151',
-        marginBottom: 4,
-    },
-    questionDescription: {
-        color: '#6B7280',
-        lineHeight: 20,
-        marginBottom: 12,
-    },
-    badgeContainer: {
-        flexDirection: 'row' as const,
-        gap: 8,
-    },
-    examTypeBadge: {
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
-    },
-    examTypeText: {
-        fontWeight: '600' as const,
+        marginBottom: 8,
     },
     yearBadge: {
-        backgroundColor: '#F3F4F6',
+        alignSelf: 'flex-start' as const,
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 12,
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 4,
     },
     yearBadgeText: {
-        color: '#374151',
         fontWeight: '600' as const,
     },
     questionMeta: {
@@ -876,8 +853,8 @@ const styles = {
         color: '#374151',
         marginBottom: 2,
     },
-    manageType: {
-        color: '#C2185B',
+    manageYear: {
+        color: '#DC2626',
         fontWeight: '500' as const,
         marginBottom: 4,
     },
@@ -914,8 +891,7 @@ const styles = {
     modalContent: {
         backgroundColor: '#fff',
         borderRadius: 16,
-        width: '100%' as const,
-        maxHeight: '85%' as const,
+        maxHeight: '80%' as const,
     },
     modalHeader: {
         flexDirection: 'row' as const,
@@ -928,8 +904,6 @@ const styles = {
     modalTitle: {
         fontWeight: 'bold' as const,
         color: '#374151',
-        flex: 1,
-        marginRight: 16,
     },
     modalCloseButton: {
         width: 32,
@@ -946,7 +920,6 @@ const styles = {
         marginBottom: 20,
     },
     inputLabel: {
-        fontSize: 16,
         fontWeight: '600' as const,
         color: '#374151',
         marginBottom: 8,
@@ -957,66 +930,30 @@ const styles = {
         borderRadius: 8,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        fontSize: 16,
         backgroundColor: '#fff',
     },
-    textArea: {
-        height: 100,
-        textAlignVertical: 'top' as const,
-    },
-    twoColumnRow: {
-        flexDirection: 'row' as const,
-    },
-    yearSelector: {
+    filePickerButton: {
         borderWidth: 1,
         borderColor: '#D1D5DB',
         borderRadius: 8,
-        backgroundColor: '#fff',
-    },
-    yearScrollView: {
-        paddingHorizontal: 8,
-        paddingVertical: 8,
-    },
-    yearOption: {
         paddingHorizontal: 16,
-        paddingVertical: 8,
-        marginRight: 8,
-        borderRadius: 6,
-        backgroundColor: '#F3F4F6',
-    },
-    selectedYearOption: {
-        backgroundColor: '#2E4064',
-    },
-    yearOptionText: {
-        fontSize: 14,
-        color: '#6B7280',
-        fontWeight: '500' as const,
-    },
-    selectedYearOptionText: {
-        color: '#fff',
-        fontWeight: '600' as const,
-    },
-    typeSelector: {
-        gap: 6,
-    },
-    typeOption: {
-        borderWidth: 1,
-        borderColor: '#D1D5DB',
-        borderRadius: 6,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        paddingVertical: 12,
         backgroundColor: '#fff',
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 8,
     },
-    selectedTypeOption: {
-        borderColor: '#2E4064',
-        backgroundColor: '#F0F4FF',
+    fileSelectedButton: {
+        borderColor: '#10B981',
+        backgroundColor: '#F0FDF4',
     },
-    typeOptionText: {
+    filePickerText: {
         color: '#6B7280',
+        flex: 1,
     },
-    selectedTypeOptionText: {
-        color: '#2E4064',
-        fontWeight: '600' as const,
+    fileSelectedText: {
+        color: '#059669',
+        fontWeight: '500' as const,
     },
     modalActions: {
         flexDirection: 'row' as const,
@@ -1036,7 +973,6 @@ const styles = {
     cancelButtonText: {
         color: '#6B7280',
         fontWeight: '600' as const,
-        fontSize: 16,
     },
     saveButton: {
         flex: 1,
@@ -1048,7 +984,6 @@ const styles = {
     saveButtonText: {
         color: '#fff',
         fontWeight: '600' as const,
-        fontSize: 16,
     },
     disabledButton: {
         opacity: 0.5,

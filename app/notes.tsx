@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -18,11 +19,10 @@ import {
 interface Note {
     id: string;
     title: string;
-    description: string;
+    heading: string;
     file_url: string;
     file_size: string;
     upload_date: string;
-    course_id: string;
 }
 
 const NotesPage = () => {
@@ -34,11 +34,11 @@ const NotesPage = () => {
 
     // Update states
     const [updating, setUpdating] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [newNote, setNewNote] = useState({
         title: '',
-        description: '',
-        file_url: '',
-        file_size: ''
+        heading: '',
+        selectedFile: null as any
     });
 
     // Modal states
@@ -58,13 +58,15 @@ const NotesPage = () => {
         try {
             setLoading(true);
             const { data, error } = await supabase
-                .from('course_notes')
-                .select('*')
-                .eq('course_id', courseId)
-                .order('upload_date', { ascending: false });
+                .from('courses')
+                .select('notes')
+                .eq('id', courseId)
+                .single();
 
             if (error) throw error;
-            setNotes(data || []);
+
+            const notesData = data?.notes || [];
+            setNotes(notesData);
         } catch (error) {
             console.error('Error fetching notes:', error);
             Alert.alert('Error', 'Failed to load notes');
@@ -81,29 +83,110 @@ const NotesPage = () => {
         router.back();
     };
 
+    const pickDocument = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/pdf',
+                copyToCacheDirectory: true
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const file = result.assets[0];
+                setNewNote(prev => ({
+                    ...prev,
+                    selectedFile: file,
+                    title: prev.title || file.name.replace('.pdf', '')
+                }));
+            }
+        } catch (error) {
+            console.error('Error picking document:', error);
+            Alert.alert('Error', 'Failed to pick document');
+        }
+    };
+
+    const uploadFile = async (file: any, fileName: string) => {
+        try {
+            setUploading(true);
+
+            const fileExt = 'pdf';
+            const filePath = `Course-data/${courseId}/Notes/${fileName}.${fileExt}`;
+
+            // Create FormData for file upload
+            const formData = new FormData();
+            formData.append('file', {
+                uri: file.uri,
+                type: 'application/pdf',
+                name: `${fileName}.${fileExt}`
+            } as any);
+
+            // Upload to Supabase Storage
+            const { error } = await supabase.storage
+                .from('inside-inspiration-academy-assets')
+                .upload(filePath, formData, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+
+            if (error) throw error;
+
+            // Get public URL
+            const { data: publicData } = supabase.storage
+                .from('inside-inspiration-academy-assets')
+                .getPublicUrl(filePath);
+
+            return publicData.publicUrl;
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            throw error;
+        } finally {
+            setUploading(false);
+        }
+    };
+
     const handleAddNote = async () => {
-        if (!newNote.title.trim() || !newNote.file_url.trim()) {
-            Alert.alert('Error', 'Please fill in title and file URL');
+        if (!newNote.title.trim() || !newNote.heading.trim() || !newNote.selectedFile) {
+            Alert.alert('Error', 'Please fill in all fields and select a PDF file');
             return;
         }
 
         try {
             setUpdating(true);
-            const { error } = await supabase
-                .from('course_notes')
-                .insert({
-                    course_id: courseId,
-                    title: newNote.title.trim(),
-                    description: newNote.description.trim(),
-                    file_url: newNote.file_url.trim(),
-                    file_size: newNote.file_size.trim() || 'Unknown',
-                    upload_date: new Date().toISOString()
-                });
 
-            if (error) throw error;
+            // Upload file to storage
+            const fileUrl = await uploadFile(newNote.selectedFile, newNote.title);
+
+            // Create new note object
+            const newNoteData = {
+                id: Date.now().toString(),
+                title: newNote.title.trim(),
+                heading: newNote.heading.trim(),
+                file_url: fileUrl,
+                file_size: formatFileSize(newNote.selectedFile.size || 0),
+                upload_date: new Date().toISOString()
+            };
+
+            // Get current notes
+            const { data: currentData, error: fetchError } = await supabase
+                .from('courses')
+                .select('notes')
+                .eq('id', courseId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentNotes = currentData?.notes || [];
+            const updatedNotes = [...currentNotes, newNoteData];
+
+            // Update courses table
+            const { error: updateError } = await supabase
+                .from('courses')
+                .update({ notes: updatedNotes })
+                .eq('id', courseId);
+
+            if (updateError) throw updateError;
 
             Alert.alert('Success', 'Note added successfully!');
-            setNewNote({ title: '', description: '', file_url: '', file_size: '' });
+            setNewNote({ title: '', heading: '', selectedFile: null });
             setShowAddModal(false);
             fetchNotes();
         } catch (error) {
@@ -115,24 +198,35 @@ const NotesPage = () => {
     };
 
     const handleEditNote = async () => {
-        if (!editingNote || !editingNote.title.trim() || !editingNote.file_url.trim()) {
-            Alert.alert('Error', 'Please fill in title and file URL');
+        if (!editingNote || !editingNote.title.trim() || !editingNote.heading.trim()) {
+            Alert.alert('Error', 'Please fill in all fields');
             return;
         }
 
         try {
             setUpdating(true);
-            const { error } = await supabase
-                .from('course_notes')
-                .update({
-                    title: editingNote.title.trim(),
-                    description: editingNote.description.trim(),
-                    file_url: editingNote.file_url.trim(),
-                    file_size: editingNote.file_size.trim() || 'Unknown'
-                })
-                .eq('id', editingNote.id);
 
-            if (error) throw error;
+            // Get current notes
+            const { data: currentData, error: fetchError } = await supabase
+                .from('courses')
+                .select('notes')
+                .eq('id', courseId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentNotes = currentData?.notes || [];
+            const updatedNotes = currentNotes.map((note: Note) =>
+                note.id === editingNote.id ? editingNote : note
+            );
+
+            // Update courses table
+            const { error: updateError } = await supabase
+                .from('courses')
+                .update({ notes: updatedNotes })
+                .eq('id', courseId);
+
+            if (updateError) throw updateError;
 
             Alert.alert('Success', 'Note updated successfully!');
             setEditingNote(null);
@@ -156,12 +250,26 @@ const NotesPage = () => {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            const { error } = await supabase
-                                .from('course_notes')
-                                .delete()
-                                .eq('id', note.id);
+                            // Get current notes
+                            const { data: currentData, error: fetchError } = await supabase
+                                .from('courses')
+                                .select('notes')
+                                .eq('id', courseId)
+                                .single();
 
-                            if (error) throw error;
+                            if (fetchError) throw fetchError;
+
+                            const currentNotes = currentData?.notes || [];
+                            const updatedNotes = currentNotes.filter((n: Note) => n.id !== note.id);
+
+                            // Update courses table
+                            const { error: updateError } = await supabase
+                                .from('courses')
+                                .update({ notes: updatedNotes })
+                                .eq('id', courseId);
+
+                            if (updateError) throw updateError;
+
                             fetchNotes();
                         } catch (error) {
                             console.error('Error deleting note:', error);
@@ -173,6 +281,14 @@ const NotesPage = () => {
         );
     };
 
+    const formatFileSize = (bytes: number) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
     const handleOpenFile = (url: string) => {
         Linking.openURL(url).catch(() => {
             Alert.alert('Error', 'Unable to open file');
@@ -180,6 +296,133 @@ const NotesPage = () => {
     };
 
     const isSmallScreen = screenData.width < 600;
+
+    const renderViewContent = () => {
+        if (loading) {
+            return (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#2E4064" />
+                    <Text style={[styles.loadingText, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                        Loading Notes...
+                    </Text>
+                </View>
+            );
+        }
+
+        if (notes.length === 0) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <Ionicons name="document-text-outline" size={64} color="#D1D5DB" />
+                    <Text style={[styles.emptyTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+                        No Notes Available
+                    </Text>
+                    <Text style={[styles.emptyDescription, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                        There are no notes uploaded for this course yet. Check back later or contact your instructor.
+                    </Text>
+                </View>
+            );
+        }
+
+        return (
+            <View style={styles.notesList}>
+                {notes.map((note) => (
+                    <View key={note.id} style={styles.noteCard}>
+                        <View style={styles.noteHeader}>
+                            <View style={styles.noteIcon}>
+                                <Ionicons name="document-text" size={24} color="#059669" />
+                            </View>
+                            <View style={styles.noteInfo}>
+                                <Text style={[styles.noteTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                                    {note.title}
+                                </Text>
+                                <Text style={[styles.noteHeading, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                    {note.heading}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.noteMeta}>
+                            <View style={styles.metaItem}>
+                                <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                    {new Date(note.upload_date).toLocaleDateString()}
+                                </Text>
+                            </View>
+                            <View style={styles.metaItem}>
+                                <Ionicons name="document-outline" size={16} color="#6B7280" />
+                                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                    {note.file_size}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.downloadButton}
+                            onPress={() => handleOpenFile(note.file_url)}
+                        >
+                            <Ionicons name="download-outline" size={20} color="#fff" />
+                            <Text style={[styles.downloadButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                Download PDF
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                ))}
+            </View>
+        );
+    };
+
+    const renderUpdateContent = () => {
+        return (
+            <View style={styles.updateContent}>
+                <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={() => setShowAddModal(true)}
+                >
+                    <Ionicons name="add-circle-outline" size={24} color="#fff" />
+                    <Text style={[styles.addButtonText, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                        Add New Note
+                    </Text>
+                </TouchableOpacity>
+
+                {notes.length > 0 && (
+                    <View style={styles.manageSection}>
+                        <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+                            Manage Notes
+                        </Text>
+                        {notes.map((note) => (
+                            <View key={note.id} style={styles.manageCard}>
+                                <View style={styles.manageInfo}>
+                                    <Text style={[styles.manageTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        {note.title}
+                                    </Text>
+                                    <Text style={[styles.manageHeading, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                        {note.heading}
+                                    </Text>
+                                    <Text style={[styles.manageDate, { fontSize: isSmallScreen ? 10 : 12 }]}>
+                                        {new Date(note.upload_date).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                                <View style={styles.manageActions}>
+                                    <TouchableOpacity
+                                        style={styles.editButton}
+                                        onPress={() => setEditingNote({ ...note })}
+                                    >
+                                        <Ionicons name="pencil" size={16} color="#2563EB" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.deleteButton}
+                                        onPress={() => handleDeleteNote(note)}
+                                    >
+                                        <Ionicons name="trash" size={16} color="#DC2626" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                )}
+            </View>
+        );
+    };
 
     return (
         <>
@@ -194,7 +437,7 @@ const NotesPage = () => {
                         <Text style={[styles.headerTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
                             Notes
                         </Text>
-                        <Text style={[styles.headerSubtitle, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                        <Text style={[styles.headerSubtitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
                             {courseName}
                         </Text>
                     </View>
@@ -211,7 +454,7 @@ const NotesPage = () => {
                             activeTab === 'view' && styles.activeTabText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                            View Notes ({notes.length})
+                            View Notes
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -231,119 +474,11 @@ const NotesPage = () => {
                 {/* Content */}
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     {activeTab === 'view' ? (
-                        // View Tab Content
                         <View style={styles.viewContent}>
-                            {loading ? (
-                                <View style={styles.loadingContainer}>
-                                    <ActivityIndicator size="large" color="#2E4064" />
-                                    <Text style={styles.loadingText}>Loading notes...</Text>
-                                </View>
-                            ) : notes.length === 0 ? (
-                                <View style={styles.emptyContainer}>
-                                    <Ionicons name="document-text-outline" size={80} color="#9CA3AF" />
-                                    <Text style={[styles.emptyTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-                                        No Notes Available
-                                    </Text>
-                                    <Text style={[styles.emptyDescription, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                                        Notes will appear here once they are uploaded
-                                    </Text>
-                                </View>
-                            ) : (
-                                <View style={styles.notesList}>
-                                    {notes.map((note) => (
-                                        <View key={note.id} style={styles.noteCard}>
-                                            <View style={styles.noteHeader}>
-                                                <View style={styles.noteIcon}>
-                                                    <Ionicons name="document-text" size={24} color="#388E3C" />
-                                                </View>
-                                                <View style={styles.noteInfo}>
-                                                    <Text style={[styles.noteTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                                        {note.title}
-                                                    </Text>
-                                                    {note.description && (
-                                                        <Text style={[styles.noteDescription, { fontSize: isSmallScreen ? 14 : 15 }]}>
-                                                            {note.description}
-                                                        </Text>
-                                                    )}
-                                                </View>
-                                            </View>
-
-                                            <View style={styles.noteMeta}>
-                                                <View style={styles.metaItem}>
-                                                    <Ionicons name="download-outline" size={16} color="#6B7280" />
-                                                    <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                        {note.file_size}
-                                                    </Text>
-                                                </View>
-                                                <View style={styles.metaItem}>
-                                                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                                                    <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                        {new Date(note.upload_date).toLocaleDateString()}
-                                                    </Text>
-                                                </View>
-                                            </View>
-
-                                            <TouchableOpacity
-                                                style={styles.downloadButton}
-                                                onPress={() => handleOpenFile(note.file_url)}
-                                            >
-                                                <Ionicons name="download" size={16} color="#fff" />
-                                                <Text style={[styles.downloadButtonText, { fontSize: isSmallScreen ? 14 : 15 }]}>
-                                                    Download
-                                                </Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    ))}
-                                </View>
-                            )}
+                            {renderViewContent()}
                         </View>
                     ) : (
-                        // Update Tab Content
-                        <View style={styles.updateContent}>
-                            <TouchableOpacity
-                                style={styles.addButton}
-                                onPress={() => setShowAddModal(true)}
-                            >
-                                <Ionicons name="add-circle" size={24} color="#fff" />
-                                <Text style={[styles.addButtonText, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                    Add New Note
-                                </Text>
-                            </TouchableOpacity>
-
-                            {notes.length > 0 && (
-                                <View style={styles.manageSection}>
-                                    <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-                                        Manage Existing Notes
-                                    </Text>
-                                    {notes.map((note) => (
-                                        <View key={note.id} style={styles.manageCard}>
-                                            <View style={styles.manageInfo}>
-                                                <Text style={[styles.manageTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                                    {note.title}
-                                                </Text>
-                                                <Text style={[styles.manageDate, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                    Uploaded: {new Date(note.upload_date).toLocaleDateString()}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.manageActions}>
-                                                <TouchableOpacity
-                                                    style={styles.editButton}
-                                                    onPress={() => setEditingNote(note)}
-                                                >
-                                                    <Ionicons name="pencil" size={16} color="#3B82F6" />
-                                                </TouchableOpacity>
-                                                <TouchableOpacity
-                                                    style={styles.deleteButton}
-                                                    onPress={() => handleDeleteNote(note)}
-                                                >
-                                                    <Ionicons name="trash" size={16} color="#EF4444" />
-                                                </TouchableOpacity>
-                                            </View>
-                                        </View>
-                                    ))}
-                                </View>
-                            )}
-                        </View>
+                        renderUpdateContent()
                     )}
                 </ScrollView>
 
@@ -355,12 +490,13 @@ const NotesPage = () => {
                     onRequestClose={() => {
                         setShowAddModal(false);
                         setEditingNote(null);
+                        setNewNote({ title: '', heading: '', selectedFile: null });
                     }}
                 >
                     <View style={styles.modalOverlay}>
-                        <View style={[styles.modalContent, { maxWidth: isSmallScreen ? screenData.width - 40 : 500 }]}>
+                        <View style={[styles.modalContent, { width: isSmallScreen ? '100%' : '80%' }]}>
                             <View style={styles.modalHeader}>
-                                <Text style={[styles.modalTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+                                <Text style={[styles.modalTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
                                     {editingNote ? 'Edit Note' : 'Add New Note'}
                                 </Text>
                                 <TouchableOpacity
@@ -368,78 +504,76 @@ const NotesPage = () => {
                                     onPress={() => {
                                         setShowAddModal(false);
                                         setEditingNote(null);
+                                        setNewNote({ title: '', heading: '', selectedFile: null });
                                     }}
                                 >
-                                    <Ionicons name="close" size={24} color="#6B7280" />
+                                    <Ionicons name="close" size={20} color="#6B7280" />
                                 </TouchableOpacity>
                             </View>
 
-                            <ScrollView style={styles.modalBody}>
+                            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                                 <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>Title *</Text>
+                                    <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Title *
+                                    </Text>
                                     <TextInput
-                                        style={styles.textInput}
-                                        placeholder="Enter note title"
+                                        style={[styles.textInput, { fontSize: isSmallScreen ? 14 : 16 }]}
                                         value={editingNote ? editingNote.title : newNote.title}
                                         onChangeText={(text) => {
                                             if (editingNote) {
-                                                setEditingNote({ ...editingNote, title: text });
+                                                setEditingNote(prev => prev ? { ...prev, title: text } : null);
                                             } else {
-                                                setNewNote({ ...newNote, title: text });
+                                                setNewNote(prev => ({ ...prev, title: text }));
                                             }
                                         }}
+                                        placeholder="Enter note title"
+                                        placeholderTextColor="#9CA3AF"
                                     />
                                 </View>
 
                                 <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>Description</Text>
+                                    <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Heading *
+                                    </Text>
                                     <TextInput
-                                        style={[styles.textInput, styles.textArea]}
-                                        placeholder="Enter note description"
-                                        multiline
-                                        numberOfLines={4}
-                                        value={editingNote ? editingNote.description : newNote.description}
+                                        style={[styles.textInput, { fontSize: isSmallScreen ? 14 : 16 }]}
+                                        value={editingNote ? editingNote.heading : newNote.heading}
                                         onChangeText={(text) => {
                                             if (editingNote) {
-                                                setEditingNote({ ...editingNote, description: text });
+                                                setEditingNote(prev => prev ? { ...prev, heading: text } : null);
                                             } else {
-                                                setNewNote({ ...newNote, description: text });
+                                                setNewNote(prev => ({ ...prev, heading: text }));
                                             }
                                         }}
+                                        placeholder="Enter note heading/description"
+                                        placeholderTextColor="#9CA3AF"
                                     />
                                 </View>
 
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>File URL *</Text>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="Enter file download URL"
-                                        value={editingNote ? editingNote.file_url : newNote.file_url}
-                                        onChangeText={(text) => {
-                                            if (editingNote) {
-                                                setEditingNote({ ...editingNote, file_url: text });
-                                            } else {
-                                                setNewNote({ ...newNote, file_url: text });
-                                            }
-                                        }}
-                                    />
-                                </View>
-
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>File Size</Text>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="e.g., 1.2 MB"
-                                        value={editingNote ? editingNote.file_size : newNote.file_size}
-                                        onChangeText={(text) => {
-                                            if (editingNote) {
-                                                setEditingNote({ ...editingNote, file_size: text });
-                                            } else {
-                                                setNewNote({ ...newNote, file_size: text });
-                                            }
-                                        }}
-                                    />
-                                </View>
+                                {!editingNote && (
+                                    <View style={styles.inputGroup}>
+                                        <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                            PDF File *
+                                        </Text>
+                                        <TouchableOpacity
+                                            style={[styles.filePickerButton, newNote.selectedFile && styles.fileSelectedButton]}
+                                            onPress={pickDocument}
+                                        >
+                                            <Ionicons
+                                                name={newNote.selectedFile ? "document" : "document-attach-outline"}
+                                                size={20}
+                                                color={newNote.selectedFile ? "#10B981" : "#6B7280"}
+                                            />
+                                            <Text style={[
+                                                styles.filePickerText,
+                                                newNote.selectedFile && styles.fileSelectedText,
+                                                { fontSize: isSmallScreen ? 14 : 16 }
+                                            ]}>
+                                                {newNote.selectedFile ? newNote.selectedFile.name : 'Select PDF File'}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
                             </ScrollView>
 
                             <View style={styles.modalActions}>
@@ -448,18 +582,28 @@ const NotesPage = () => {
                                     onPress={() => {
                                         setShowAddModal(false);
                                         setEditingNote(null);
+                                        setNewNote({ title: '', heading: '', selectedFile: null });
                                     }}
                                 >
-                                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                                    <Text style={[styles.cancelButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Cancel
+                                    </Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
-                                    style={[styles.saveButton, updating && styles.disabledButton]}
+                                    style={[
+                                        styles.saveButton,
+                                        (updating || uploading) && styles.disabledButton
+                                    ]}
                                     onPress={editingNote ? handleEditNote : handleAddNote}
-                                    disabled={updating}
+                                    disabled={updating || uploading}
                                 >
-                                    <Text style={styles.saveButtonText}>
-                                        {updating ? 'Saving...' : editingNote ? 'Update' : 'Add'}
-                                    </Text>
+                                    {(updating || uploading) ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <Text style={[styles.saveButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                            {editingNote ? 'Update' : 'Add Note'}
+                                        </Text>
+                                    )}
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -545,7 +689,6 @@ const styles = {
     loadingText: {
         marginTop: 16,
         color: '#6B7280',
-        fontSize: 16,
     },
     emptyContainer: {
         flex: 1,
@@ -598,7 +741,7 @@ const styles = {
         color: '#374151',
         marginBottom: 4,
     },
-    noteDescription: {
+    noteHeading: {
         color: '#6B7280',
         lineHeight: 20,
     },
@@ -670,6 +813,11 @@ const styles = {
         color: '#374151',
         marginBottom: 4,
     },
+    manageHeading: {
+        color: '#059669',
+        fontWeight: '500' as const,
+        marginBottom: 4,
+    },
     manageDate: {
         color: '#6B7280',
     },
@@ -703,7 +851,6 @@ const styles = {
     modalContent: {
         backgroundColor: '#fff',
         borderRadius: 16,
-        width: '100%' as const,
         maxHeight: '80%' as const,
     },
     modalHeader: {
@@ -733,7 +880,6 @@ const styles = {
         marginBottom: 20,
     },
     inputLabel: {
-        fontSize: 16,
         fontWeight: '600' as const,
         color: '#374151',
         marginBottom: 8,
@@ -744,12 +890,30 @@ const styles = {
         borderRadius: 8,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        fontSize: 16,
         backgroundColor: '#fff',
     },
-    textArea: {
-        height: 100,
-        textAlignVertical: 'top' as const,
+    filePickerButton: {
+        borderWidth: 1,
+        borderColor: '#D1D5DB',
+        borderRadius: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#fff',
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 8,
+    },
+    fileSelectedButton: {
+        borderColor: '#10B981',
+        backgroundColor: '#F0FDF4',
+    },
+    filePickerText: {
+        color: '#6B7280',
+        flex: 1,
+    },
+    fileSelectedText: {
+        color: '#059669',
+        fontWeight: '500' as const,
     },
     modalActions: {
         flexDirection: 'row' as const,
@@ -769,7 +933,6 @@ const styles = {
     cancelButtonText: {
         color: '#6B7280',
         fontWeight: '600' as const,
-        fontSize: 16,
     },
     saveButton: {
         flex: 1,
@@ -781,7 +944,6 @@ const styles = {
     saveButtonText: {
         color: '#fff',
         fontWeight: '600' as const,
-        fontSize: 16,
     },
     disabledButton: {
         opacity: 0.5,
