@@ -7,10 +7,10 @@
  */
 
 // Set this to true to use test date, false for real date
-const TEST_MODE = false;
+const TEST_MODE = true;
 
 // Test date: September 15, 2025
-const TEST_DATE = new Date(2025, 9, 15); // Month is 0-indexed, so 8 = September
+const TEST_DATE = new Date(2025, 6, 6); // Month is 0-indexed, so 8 = September
 
 /**
  * Get the current date (test date if TEST_MODE is true, otherwise real date)
