@@ -17,10 +17,12 @@ export default function Index() {
           SessionDebug.startAuthMonitoring();
           await SessionDebug.checkSessionStatus();
         }
-        
+
+        console.log('Starting route determination...');
         const route = await determineAppRoute();
+        console.log('Route determined:', route);
         setDestination(route);
-        
+
         console.log('App routing to:', route);
       } catch (error) {
         console.error('Error initializing route:', error);

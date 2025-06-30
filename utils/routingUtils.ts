@@ -1,6 +1,6 @@
 // utils/routingUtils.ts
-import { supabase } from '../lib/supabase';
-import { authService } from '../services/authService';
+import { supabase } from "../lib/supabase";
+import { authService } from "../services/authService";
 
 /**
  * Checks if user profile is complete based on required fields
@@ -10,22 +10,29 @@ import { authService } from '../services/authService';
 export const isProfileComplete = async (userId: string): Promise<boolean> => {
   try {
     const { data: userData, error } = await supabase
-      .from('users')
-      .select('name, phone_no, address, dob, univ_name, gender')
-      .eq('id', userId)
+      .from("users")
+      .select("name, phone_no, address, dob, univ_name, gender")
+      .eq("id", userId)
       .maybeSingle();
 
     if (error || !userData) {
-      console.error('Error fetching user data for profile check:', error);
+      console.error("Error fetching user data for profile check:", error);
       return false;
     }
 
     // Check if all required fields have data (not empty or null)
-    const requiredFields = ['name', 'phone_no', 'address', 'dob', 'univ_name', 'gender'];
-    
+    const requiredFields = [
+      "name",
+      "phone_no",
+      "address",
+      "dob",
+      "univ_name",
+      "gender",
+    ];
+
     for (const field of requiredFields) {
       const value = userData[field as keyof typeof userData];
-      if (!value || (typeof value === 'string' && value.trim() === '')) {
+      if (!value || (typeof value === "string" && value.trim() === "")) {
         console.log(`Profile incomplete: missing ${field}`);
         return false;
       }
@@ -33,7 +40,7 @@ export const isProfileComplete = async (userId: string): Promise<boolean> => {
 
     return true;
   } catch (error) {
-    console.error('Error checking profile completion:', error);
+    console.error("Error checking profile completion:", error);
     return false;
   }
 };
@@ -47,39 +54,37 @@ export const determineUserRoute = async (userId: string): Promise<string> => {
   try {
     // Fetch user data to determine role
     const { data: userData, error } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', userId)
+      .from("users")
+      .select("role")
+      .eq("id", userId)
       .maybeSingle();
 
     if (error) {
-      console.error('Error fetching user data:', error);
+      console.error("Error fetching user data:", error);
       // If error fetching user data, go to guest
-      return '/(guest)';
+      return "/(guest)";
     }
 
     if (!userData) {
       // User doesn't exist in database, go to guest
-      return '/(guest)';
+      return "/(guest)";
     }
 
     // Redirect based on user role
-    if (userData.role === 'admin') {
-      return '/(admin)';
-    }
-    else if (userData.role === 'teacher') {
-      return '/(admin)';
-    }
-    else if (userData.role === 'student') {
-      return '/(students)';
+    if (userData.role === "admin") {
+      return "/(admin)";
+    } else if (userData.role === "teacher") {
+      return "/(admin)";
+    } else if (userData.role === "student") {
+      return "/(students)";
     } else {
       // Default or no role - go to guest
-      return '/(guest)';
+      return "/(guest)";
     }
   } catch (error) {
-    console.error('Error determining user route:', error);
+    console.error("Error determining user route:", error);
     // On error, default to guest
-    return '/(guest)';
+    return "/(guest)";
   }
 };
 
@@ -89,27 +94,33 @@ export const determineUserRoute = async (userId: string): Promise<string> => {
  */
 export const determineAppRoute = async (): Promise<string> => {
   try {
+    // Check authentication status first
+    const isAuthenticated = await authService.isAuthenticated();
+
+    if (isAuthenticated) {
+      // User is authenticated - get user session to determine route
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user) {
+        // Send user directly to their role-based dashboard
+        return await determineUserRoute(session.user.id);
+      }
+    }
+
     // Check if user has seen onboarding
     const hasSeenOnboarding = await authService.hasSeenOnboarding();
-    
+
     if (!hasSeenOnboarding) {
       // First time user - show onboarding
-      return '/onboarding';
+      return "/onboarding";
     }
 
-    // Check authentication status
-    const isAuthenticated = await authService.isAuthenticated();
-    
-    if (!isAuthenticated) {
-      // User has seen onboarding but not authenticated - go to auth
-      return '/(auth)';
-    }
-
-    // User is authenticated - go to profile first for completion check
-    return '/(profile)';
+    // User has seen onboarding but not authenticated - go to auth
+    return "/(auth)";
   } catch (error) {
-    console.error('Error determining app route:', error);
+    console.error("Error determining app route:", error);
     // On error, default to onboarding
-    return '/onboarding';
+    return "/onboarding";
   }
 };

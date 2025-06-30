@@ -1,24 +1,26 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
 import {
-    Dimensions,
-    FlatList,
-    Image,
-    SafeAreaView,
-    StatusBar,
-    Text,
-    TouchableOpacity,
-    View,
+  Dimensions,
+  FlatList,
+  Image,
+  SafeAreaView,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import tw from 'twrnc';
+import { supabase } from '../lib/supabase';
 import { authService } from '../services/authService';
+import { determineUserRoute } from '../utils/routingUtils';
 
 // Import images
 import onboarding1 from '../assets/images/onboarding_1-bg-removed.png';
 import onboarding2 from '../assets/images/onboarding_2-bg-removed.png';
 import onboarding3 from '../assets/images/onboarding_3-bg-removed.png';
 
-const {width, height} = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 const slides = [
   {
@@ -41,12 +43,12 @@ const slides = [
   },
 ];
 
-const Slide = ({item}: {item: typeof slides[0]}) => {
+const Slide = ({ item }: { item: typeof slides[0] }) => {
   return (
-    <View style={[tw`items-center h-full justify-between pt-20`, {height: height * 0.75}]}>
+    <View style={[tw`items-center h-full justify-between pt-20`, { height: height * 0.75 }]}>
       <Image
         source={item?.image}
-        style={[{height: '60%', width, resizeMode: 'contain'}]}
+        style={[{ height: '60%', width, resizeMode: 'contain' }]}
       />
       <View style={tw`w-full items-center px-8 flex flex-col gap-3`}>
         <Text style={tw`text-white text-xl font-bold text-center text-2xl`}>{item?.title}</Text>
@@ -61,6 +63,28 @@ const OnboardingScreen = () => {
   const ref = React.useRef<FlatList>(null);
   const router = useRouter();
 
+  // Check if user is already authenticated on component mount
+  React.useEffect(() => {
+    const checkAuthAndRedirect = async () => {
+      try {
+        const isAuthenticated = await authService.isAuthenticated();
+        if (isAuthenticated) {
+          // User is already authenticated, redirect to their dashboard
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            const userRoute = await determineUserRoute(session.user.id);
+            router.replace(userRoute as any);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking auth status in onboarding:', error);
+      }
+    };
+
+    checkAuthAndRedirect();
+  }, [router]);
+
   const updateCurrentSlideIndex = (e: any) => {
     const contentOffsetX = e.nativeEvent.contentOffset.x;
     const currentIndex = Math.round(contentOffsetX / width);
@@ -71,7 +95,7 @@ const OnboardingScreen = () => {
     const nextSlideIndex = currentSlideIndex + 1;
     if (nextSlideIndex !== slides.length) {
       const offset = nextSlideIndex * width;
-      ref?.current?.scrollToOffset({offset});
+      ref?.current?.scrollToOffset({ offset });
       setCurrentSlideIndex(currentSlideIndex + 1);
     }
   };
@@ -79,7 +103,7 @@ const OnboardingScreen = () => {
   const skip = () => {
     const lastSlideIndex = slides.length - 1;
     const offset = lastSlideIndex * width;
-    ref?.current?.scrollToOffset({offset});
+    ref?.current?.scrollToOffset({ offset });
     setCurrentSlideIndex(lastSlideIndex);
   };
 
@@ -87,17 +111,32 @@ const OnboardingScreen = () => {
     try {
       // Mark that user has seen onboarding
       await authService.markOnboardingAsSeen();
+
+      // Check if user is already authenticated
+      const isAuthenticated = await authService.isAuthenticated();
+
+      if (isAuthenticated) {
+        // User is authenticated, send them to their role-based dashboard
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const userRoute = await determineUserRoute(session.user.id);
+          router.push(userRoute as any);
+          return;
+        }
+      }
+
+      // User not authenticated, go to auth
       router.push('/(auth)');
     } catch (error) {
-      console.error('Error saving onboarding status:', error);
-      // Still navigate even if storage fails
+      console.error('Error navigating from onboarding:', error);
+      // Still navigate even if there's an error
       router.push('/(auth)');
     }
   };
 
   const Footer = () => {
     return (
-      <View style={[tw`justify-between px-5`, {height: height * 0.15}]}>
+      <View style={[tw`justify-between px-5`, { height: height * 0.15 }]}>
         {/* Indicator container */}
         <View style={tw`flex-row justify-center mt-5`}>
           {/* Render indicator */}
@@ -150,17 +189,17 @@ const OnboardingScreen = () => {
     );
   };
   return (
-    <SafeAreaView style={[tw`flex-1`, {backgroundColor: '#111827'}]}>
+    <SafeAreaView style={[tw`flex-1`, { backgroundColor: '#111827' }]}>
       <StatusBar backgroundColor="#111827" />
       <FlatList
         ref={ref}
         onMomentumScrollEnd={updateCurrentSlideIndex}
-        contentContainerStyle={[tw``, {height: height * 0.75}]}
+        contentContainerStyle={[tw``, { height: height * 0.75 }]}
         showsHorizontalScrollIndicator={false}
         horizontal
         data={slides}
         pagingEnabled
-        renderItem={({item}) => <Slide item={item} />}
+        renderItem={({ item }) => <Slide item={item} />}
       />
       <Footer />
     </SafeAreaView>

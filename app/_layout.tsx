@@ -25,7 +25,8 @@ export default function RootLayout() {
         <Stack.Screen name="(profile)" options={{ headerShown: false }} />
         <Stack.Screen name="(students)" options={{ headerShown: false }} />
         <Stack.Screen name="(admin)" options={{ headerShown: false }} />
-        
+        <Stack.Screen name="course-details" options={{ headerShown: false }} />
+
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

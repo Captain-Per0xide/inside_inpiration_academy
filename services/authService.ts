@@ -1,6 +1,6 @@
 // services/authService.ts
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../lib/supabase';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "../lib/supabase";
 
 class AuthService {
   private currentUser: any = null;
@@ -13,22 +13,22 @@ class AuthService {
 
   private async initializeAuth() {
     try {
-      console.log('Initializing auth service...');
+      console.log("Initializing auth service...");
       const { data } = await supabase.auth.getSession();
       this.currentSession = data.session;
       this.currentUser = data.session?.user || null;
       this.isInitialized = true;
-      
-      console.log('Auth initialized - Session exists:', !!data.session);
-      console.log('User ID:', this.currentUser?.id || 'None');
+
+      console.log("Auth initialized - Session exists:", !!data.session);
+      console.log("User ID:", this.currentUser?.id || "None");
     } catch (error) {
-      console.error('Error initializing auth:', error);
+      console.error("Error initializing auth:", error);
       this.isInitialized = true;
     }
 
     // Listen for auth changes
     supabase.auth.onAuthStateChange((event, session) => {
-      console.log('Auth state changed:', event, !!session);
+      console.log("Auth state changed:", event, !!session);
       this.currentSession = session;
       this.currentUser = session?.user || null;
     });
@@ -37,7 +37,7 @@ class AuthService {
   // Wait for initialization to complete
   private async waitForInitialization(): Promise<void> {
     if (this.isInitialized) return;
-    
+
     return new Promise((resolve) => {
       const checkInit = () => {
         if (this.isInitialized) {
@@ -64,21 +64,21 @@ class AuthService {
   async getCurrentUserUID(): Promise<string | null> {
     try {
       await this.waitForInitialization();
-      
+
       // First try to get from current user cache
       if (this.currentUser?.id) {
         return this.currentUser.id;
       }
-      
+
       // If not available, fetch fresh from Supabase
       const { data, error } = await supabase.auth.getUser();
       if (error) throw error;
-      
+
       // Update current user cache
       this.currentUser = data.user;
       return data.user?.id || null;
     } catch (error) {
-      console.error('Error getting user UID:', error);
+      console.error("Error getting user UID:", error);
       return null;
     }
   }
@@ -87,21 +87,21 @@ class AuthService {
   async getCurrentUserEmail(): Promise<string | null> {
     try {
       await this.waitForInitialization();
-      
+
       // First try to get from current user cache
       if (this.currentUser?.email) {
         return this.currentUser.email;
       }
-      
+
       // If not available, fetch fresh from Supabase
       const { data, error } = await supabase.auth.getUser();
       if (error) throw error;
-      
+
       // Update current user cache
       this.currentUser = data.user;
       return data.user?.email || null;
     } catch (error) {
-      console.error('Error getting user email:', error);
+      console.error("Error getting user email:", error);
       return null;
     }
   }
@@ -110,18 +110,26 @@ class AuthService {
   async isAuthenticated(): Promise<boolean> {
     try {
       await this.waitForInitialization();
-      
+
       // First check cached session
       if (this.currentSession?.user) {
         return true;
       }
-      
+
       // If no cached session, fetch fresh from Supabase
-      const { data, error } = await supabase.auth.getUser();
-      if (error) throw error;
-      return !!data.user;
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error("Error checking session:", error);
+        return false;
+      }
+
+      // Update cached session
+      this.currentSession = data.session;
+      this.currentUser = data.session?.user || null;
+
+      return !!data.session?.user;
     } catch (error) {
-      console.error('Error checking authentication:', error);
+      console.error("Error checking authentication:", error);
       return false;
     }
   }
@@ -133,7 +141,7 @@ class AuthService {
       if (error) throw error;
       return data.session;
     } catch (error) {
-      console.error('Error getting session:', error);
+      console.error("Error getting session:", error);
       return null;
     }
   }
@@ -143,15 +151,15 @@ class AuthService {
     try {
       // Sign out from Supabase
       await supabase.auth.signOut();
-      
+
       // Clear cached user data
       this.currentUser = null;
       this.currentSession = null;
-      
+
       // Clear onboarding status so user sees onboarding again on next login
-      await AsyncStorage.removeItem('hasSeenOnboarding');
+      await AsyncStorage.removeItem("hasSeenOnboarding");
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error("Error during logout:", error);
       throw error;
     }
   }
@@ -159,19 +167,19 @@ class AuthService {
   // Utility method to reset onboarding status (for testing)
   async resetOnboardingStatus(): Promise<void> {
     try {
-      await AsyncStorage.removeItem('hasSeenOnboarding');
+      await AsyncStorage.removeItem("hasSeenOnboarding");
     } catch (error) {
-      console.error('Error resetting onboarding status:', error);
+      console.error("Error resetting onboarding status:", error);
     }
   }
 
   // Utility method to check if user has seen onboarding
   async hasSeenOnboarding(): Promise<boolean> {
     try {
-      const value = await AsyncStorage.getItem('hasSeenOnboarding');
-      return value === 'true';
+      const value = await AsyncStorage.getItem("hasSeenOnboarding");
+      return value === "true";
     } catch (error) {
-      console.error('Error checking onboarding status:', error);
+      console.error("Error checking onboarding status:", error);
       return false;
     }
   }
@@ -179,9 +187,9 @@ class AuthService {
   // Utility method to mark onboarding as seen
   async markOnboardingAsSeen(): Promise<void> {
     try {
-      await AsyncStorage.setItem('hasSeenOnboarding', 'true');
+      await AsyncStorage.setItem("hasSeenOnboarding", "true");
     } catch (error) {
-      console.error('Error marking onboarding as seen:', error);
+      console.error("Error marking onboarding as seen:", error);
     }
   }
 }
