@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, StyleSheet, Text, View, Dimensions } from 'react-native';
+import { Alert, Dimensions, StyleSheet, Text, View } from 'react-native';
 import PDF from 'react-native-pdf';
 
 interface PDFViewerProps {
