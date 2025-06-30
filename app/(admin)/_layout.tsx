@@ -10,8 +10,8 @@ import StudentsIcon from "@/components/icons/StudentsIcon";
 import TeacherIcon from "@/components/icons/TeacherIcon";
 import TestSeriesIcon from "@/components/icons/TestSeriesIcon";
 import { supabase } from "@/lib/supabase";
-import { getCurrentDate, getCurrentISOString } from "@/utils/testDate";
 import { authService } from "@/services/authService";
+import { getCurrentDate } from "@/utils/testDate";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerContentComponentProps, DrawerContentScrollView, DrawerItemList } from "@react-navigation/drawer";
 import { router } from "expo-router";
@@ -33,15 +33,15 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   const getMonthsBetween = useCallback((startDate: Date, endDate: Date): string[] => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
     const result: string[] = [];
-    
+
     const start = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
     const end = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
-    
+
     while (start <= end) {
       result.push(months[start.getMonth()]);
       start.setMonth(start.getMonth() + 1);
     }
-    
+
     return result;
   }, []);
 
@@ -51,7 +51,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
       const currentDate = getCurrentDate();
       const currentMonth = currentDate.getMonth();
       const currentYear = currentDate.getFullYear();
-      
+
       // Check if there's a trigger log for this month
       const { data, error } = await supabase
         .from('admin_triggers')
@@ -76,12 +76,12 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   const runMonthlyOverdueCheck = useCallback(async () => {
     try {
       console.log('🚨 ADMIN TRIGGER: Starting monthly overdue check for all students...');
-      
+
       const currentDate = getCurrentDate();
       const today = currentDate.getDate();
       const currentMonth = currentDate.getMonth();
       const currentYear = currentDate.getFullYear();
-      
+
       // Check if today is the 15th of the month
       if (today !== 15) {
         console.log(`📅 Trigger check: Today is ${today}th, trigger only runs on 15th of month. Skipping...`);
@@ -153,7 +153,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
             const userEnrollment = courseData.enrolled_students.find(
               (student: any) => student && student.user_id === user.id
             );
-            
+
             if (userEnrollment && userEnrollment.approve_date) {
               enrollmentDate = new Date(userEnrollment.approve_date);
             }
@@ -190,17 +190,17 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
             // Count overdue months
             for (const month of relevantMonths) {
               const monthData = feeData[month];
-              
+
               if (!monthData || !Array.isArray(monthData)) {
                 overdueMonths++;
                 continue;
               }
 
               // Check if user has successful payment for this month
-              const userPayment = monthData.find((payment: any) => 
+              const userPayment = monthData.find((payment: any) =>
                 payment.user_id === user.id && payment.status === 'success'
               );
-              
+
               if (!userPayment) {
                 overdueMonths++;
               }
@@ -210,7 +210,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           // If 2 or more months overdue, update status to pending
           if (overdueMonths >= 2) {
             console.log(`🚨 SUSPENDING: Course ${courseId} (${courseData.full_name}) for user ${user.name} - ${overdueMonths} overdue months`);
-            
+
             updatedEnrollments[i] = {
               ...enrollment,
               status: 'pending',
@@ -316,7 +316,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
 
       if (data) {
         setUserData(data);
-        
+
         // Run monthly overdue check when admin logs in
         await runMonthlyOverdueCheck();
       } else {
@@ -356,7 +356,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
   };
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={{ flex: 1, backgroundColor: '#29395A' }}>
-      <View style={{ padding: 20, alignItems: 'center'  }}>
+      <View style={{ padding: 20, alignItems: 'center' }}>
         <Image
           source={require('../../assets/images/logo.png')}
           style={{ width: 100, height: 100, marginBottom: 10, backgroundColor: '#fff', borderRadius: 50 }}
