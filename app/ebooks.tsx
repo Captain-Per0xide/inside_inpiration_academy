@@ -1,7 +1,8 @@
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -18,11 +19,10 @@ import {
 interface Ebook {
     id: string;
     title: string;
-    description: string;
+    author: string;
     file_url: string;
     file_size: string;
     upload_date: string;
-    course_id: string;
 }
 
 const EbooksPage = () => {
@@ -34,11 +34,11 @@ const EbooksPage = () => {
 
     // Update states
     const [updating, setUpdating] = useState(false);
+    const [uploading, setUploading] = useState(false);
     const [newEbook, setNewEbook] = useState({
         title: '',
-        description: '',
-        file_url: '',
-        file_size: ''
+        author: '',
+        selectedFile: null as any
     });
 
     // Modal states
@@ -58,13 +58,15 @@ const EbooksPage = () => {
         try {
             setLoading(true);
             const { data, error } = await supabase
-                .from('course_ebooks')
-                .select('*')
-                .eq('course_id', courseId)
-                .order('upload_date', { ascending: false });
+                .from('courses')
+                .select('eBooks')
+                .eq('id', courseId)
+                .single();
 
             if (error) throw error;
-            setEbooks(data || []);
+
+            const ebooksData = data?.eBooks || [];
+            setEbooks(ebooksData);
         } catch (error) {
             console.error('Error fetching ebooks:', error);
             Alert.alert('Error', 'Failed to load ebooks');
@@ -81,29 +83,110 @@ const EbooksPage = () => {
         router.back();
     };
 
+    const pickDocument = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/pdf',
+                copyToCacheDirectory: true
+            });
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const file = result.assets[0];
+                setNewEbook(prev => ({
+                    ...prev,
+                    selectedFile: file,
+                    title: prev.title || file.name.replace('.pdf', '')
+                }));
+            }
+        } catch (error) {
+            console.error('Error picking document:', error);
+            Alert.alert('Error', 'Failed to pick document');
+        }
+    };
+
+    const uploadFile = async (file: any, fileName: string) => {
+        try {
+            setUploading(true);
+
+            const fileExt = 'pdf';
+            const filePath = `Course-data/${courseId}/Ebooks/${fileName}.${fileExt}`;
+
+            // Create FormData for file upload
+            const formData = new FormData();
+            formData.append('file', {
+                uri: file.uri,
+                type: 'application/pdf',
+                name: `${fileName}.${fileExt}`
+            } as any);
+
+            // Upload to Supabase Storage
+            const { data, error } = await supabase.storage
+                .from('inside-inspiration-academy-assets')
+                .upload(filePath, formData, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+
+            if (error) throw error;
+
+            // Get public URL
+            const { data: publicData } = supabase.storage
+                .from('inside-inspiration-academy-assets')
+                .getPublicUrl(filePath);
+
+            return publicData.publicUrl;
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            throw error;
+        } finally {
+            setUploading(false);
+        }
+    };
+
     const handleAddEbook = async () => {
-        if (!newEbook.title.trim() || !newEbook.file_url.trim()) {
-            Alert.alert('Error', 'Please fill in title and file URL');
+        if (!newEbook.title.trim() || !newEbook.author.trim() || !newEbook.selectedFile) {
+            Alert.alert('Error', 'Please fill in all fields and select a PDF file');
             return;
         }
 
         try {
             setUpdating(true);
-            const { error } = await supabase
-                .from('course_ebooks')
-                .insert({
-                    course_id: courseId,
-                    title: newEbook.title.trim(),
-                    description: newEbook.description.trim(),
-                    file_url: newEbook.file_url.trim(),
-                    file_size: newEbook.file_size.trim() || 'Unknown',
-                    upload_date: new Date().toISOString()
-                });
 
-            if (error) throw error;
+            // Upload file to storage
+            const fileUrl = await uploadFile(newEbook.selectedFile, newEbook.title);
+
+            // Create new ebook object
+            const newEbookData = {
+                id: Date.now().toString(),
+                title: newEbook.title.trim(),
+                author: newEbook.author.trim(),
+                file_url: fileUrl,
+                file_size: formatFileSize(newEbook.selectedFile.size || 0),
+                upload_date: new Date().toISOString()
+            };
+
+            // Get current ebooks
+            const { data: currentData, error: fetchError } = await supabase
+                .from('courses')
+                .select('eBooks')
+                .eq('id', courseId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentEbooks = currentData?.eBooks || [];
+            const updatedEbooks = [...currentEbooks, newEbookData];
+
+            // Update courses table
+            const { error: updateError } = await supabase
+                .from('courses')
+                .update({ eBooks: updatedEbooks })
+                .eq('id', courseId);
+
+            if (updateError) throw updateError;
 
             Alert.alert('Success', 'eBook added successfully!');
-            setNewEbook({ title: '', description: '', file_url: '', file_size: '' });
+            setNewEbook({ title: '', author: '', selectedFile: null });
             setShowAddModal(false);
             fetchEbooks();
         } catch (error) {
@@ -115,24 +198,35 @@ const EbooksPage = () => {
     };
 
     const handleEditEbook = async () => {
-        if (!editingEbook || !editingEbook.title.trim() || !editingEbook.file_url.trim()) {
-            Alert.alert('Error', 'Please fill in title and file URL');
+        if (!editingEbook || !editingEbook.title.trim() || !editingEbook.author.trim()) {
+            Alert.alert('Error', 'Please fill in all fields');
             return;
         }
 
         try {
             setUpdating(true);
-            const { error } = await supabase
-                .from('course_ebooks')
-                .update({
-                    title: editingEbook.title.trim(),
-                    description: editingEbook.description.trim(),
-                    file_url: editingEbook.file_url.trim(),
-                    file_size: editingEbook.file_size.trim() || 'Unknown'
-                })
-                .eq('id', editingEbook.id);
 
-            if (error) throw error;
+            // Get current ebooks
+            const { data: currentData, error: fetchError } = await supabase
+                .from('courses')
+                .select('eBooks')
+                .eq('id', courseId)
+                .single();
+
+            if (fetchError) throw fetchError;
+
+            const currentEbooks = currentData?.eBooks || [];
+            const updatedEbooks = currentEbooks.map((ebook: Ebook) =>
+                ebook.id === editingEbook.id ? editingEbook : ebook
+            );
+
+            // Update courses table
+            const { error: updateError } = await supabase
+                .from('courses')
+                .update({ eBooks: updatedEbooks })
+                .eq('id', courseId);
+
+            if (updateError) throw updateError;
 
             Alert.alert('Success', 'eBook updated successfully!');
             setEditingEbook(null);
@@ -156,12 +250,26 @@ const EbooksPage = () => {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            const { error } = await supabase
-                                .from('course_ebooks')
-                                .delete()
-                                .eq('id', ebook.id);
+                            // Get current ebooks
+                            const { data: currentData, error: fetchError } = await supabase
+                                .from('courses')
+                                .select('eBooks')
+                                .eq('id', courseId)
+                                .single();
 
-                            if (error) throw error;
+                            if (fetchError) throw fetchError;
+
+                            const currentEbooks = currentData?.eBooks || [];
+                            const updatedEbooks = currentEbooks.filter((e: Ebook) => e.id !== ebook.id);
+
+                            // Update courses table
+                            const { error: updateError } = await supabase
+                                .from('courses')
+                                .update({ eBooks: updatedEbooks })
+                                .eq('id', courseId);
+
+                            if (updateError) throw updateError;
+
                             fetchEbooks();
                         } catch (error) {
                             console.error('Error deleting ebook:', error);
@@ -173,6 +281,14 @@ const EbooksPage = () => {
         );
     };
 
+    const formatFileSize = (bytes: number) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
     const handleOpenFile = (url: string) => {
         Linking.openURL(url).catch(() => {
             Alert.alert('Error', 'Unable to open file');
@@ -180,6 +296,133 @@ const EbooksPage = () => {
     };
 
     const isSmallScreen = screenData.width < 600;
+
+    const renderViewContent = () => {
+        if (loading) {
+            return (
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color="#2E4064" />
+                    <Text style={[styles.loadingText, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                        Loading eBooks...
+                    </Text>
+                </View>
+            );
+        }
+
+        if (ebooks.length === 0) {
+            return (
+                <View style={styles.emptyContainer}>
+                    <Ionicons name="book-outline" size={64} color="#D1D5DB" />
+                    <Text style={[styles.emptyTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+                        No eBooks Available
+                    </Text>
+                    <Text style={[styles.emptyDescription, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                        There are no eBooks uploaded for this course yet. Check back later or contact your instructor.
+                    </Text>
+                </View>
+            );
+        }
+
+        return (
+            <View style={styles.ebooksList}>
+                {ebooks.map((ebook) => (
+                    <View key={ebook.id} style={styles.ebookCard}>
+                        <View style={styles.ebookHeader}>
+                            <View style={styles.ebookIcon}>
+                                <Ionicons name="book" size={24} color="#1976D2" />
+                            </View>
+                            <View style={styles.ebookInfo}>
+                                <Text style={[styles.ebookTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                                    {ebook.title}
+                                </Text>
+                                <Text style={[styles.ebookAuthor, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                    By {ebook.author}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.ebookMeta}>
+                            <View style={styles.metaItem}>
+                                <Ionicons name="calendar-outline" size={16} color="#6B7280" />
+                                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                    {new Date(ebook.upload_date).toLocaleDateString()}
+                                </Text>
+                            </View>
+                            <View style={styles.metaItem}>
+                                <Ionicons name="document-outline" size={16} color="#6B7280" />
+                                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                    {ebook.file_size}
+                                </Text>
+                            </View>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.downloadButton}
+                            onPress={() => handleOpenFile(ebook.file_url)}
+                        >
+                            <Ionicons name="download-outline" size={20} color="#fff" />
+                            <Text style={[styles.downloadButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                Download PDF
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                ))}
+            </View>
+        );
+    };
+
+    const renderUpdateContent = () => {
+        return (
+            <View style={styles.updateContent}>
+                <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={() => setShowAddModal(true)}
+                >
+                    <Ionicons name="add-circle-outline" size={24} color="#fff" />
+                    <Text style={[styles.addButtonText, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                        Add New eBook
+                    </Text>
+                </TouchableOpacity>
+
+                {ebooks.length > 0 && (
+                    <View style={styles.manageSection}>
+                        <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+                            Manage eBooks
+                        </Text>
+                        {ebooks.map((ebook) => (
+                            <View key={ebook.id} style={styles.manageCard}>
+                                <View style={styles.manageInfo}>
+                                    <Text style={[styles.manageTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        {ebook.title}
+                                    </Text>
+                                    <Text style={[styles.manageAuthor, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                                        By {ebook.author}
+                                    </Text>
+                                    <Text style={[styles.manageDate, { fontSize: isSmallScreen ? 10 : 12 }]}>
+                                        {new Date(ebook.upload_date).toLocaleDateString()}
+                                    </Text>
+                                </View>
+                                <View style={styles.manageActions}>
+                                    <TouchableOpacity
+                                        style={styles.editButton}
+                                        onPress={() => setEditingEbook({ ...ebook })}
+                                    >
+                                        <Ionicons name="pencil" size={16} color="#2563EB" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.deleteButton}
+                                        onPress={() => handleDeleteEbook(ebook)}
+                                    >
+                                        <Ionicons name="trash" size={16} color="#DC2626" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                )}
+            </View>
+        );
+    };
 
     return (
         <>
@@ -194,7 +437,7 @@ const EbooksPage = () => {
                         <Text style={[styles.headerTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
                             eBooks
                         </Text>
-                        <Text style={[styles.headerSubtitle, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                        <Text style={[styles.headerSubtitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
                             {courseName}
                         </Text>
                     </View>
@@ -211,7 +454,7 @@ const EbooksPage = () => {
                             activeTab === 'view' && styles.activeTabText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                            View eBooks ({ebooks.length})
+                            View eBooks
                         </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -231,119 +474,11 @@ const EbooksPage = () => {
                 {/* Content */}
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                     {activeTab === 'view' ? (
-                        // View Tab Content
                         <View style={styles.viewContent}>
-                            {loading ? (
-                                <View style={styles.loadingContainer}>
-                                    <ActivityIndicator size="large" color="#2E4064" />
-                                    <Text style={styles.loadingText}>Loading eBooks...</Text>
-                                </View>
-                            ) : ebooks.length === 0 ? (
-                                <View style={styles.emptyContainer}>
-                                    <Ionicons name="book-outline" size={80} color="#9CA3AF" />
-                                    <Text style={[styles.emptyTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-                                        No eBooks Available
-                                    </Text>
-                                    <Text style={[styles.emptyDescription, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                                        eBooks will appear here once they are uploaded
-                                    </Text>
-                                </View>
-                            ) : (
-                                <View style={styles.ebooksList}>
-                                    {ebooks.map((ebook, index) => (
-                                        <View key={ebook.id} style={styles.ebookCard}>
-                                            <View style={styles.ebookHeader}>
-                                                <View style={styles.ebookIcon}>
-                                                    <Ionicons name="book" size={24} color="#1976D2" />
-                                                </View>
-                                                <View style={styles.ebookInfo}>
-                                                    <Text style={[styles.ebookTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                                        {ebook.title}
-                                                    </Text>
-                                                    {ebook.description && (
-                                                        <Text style={[styles.ebookDescription, { fontSize: isSmallScreen ? 14 : 15 }]}>
-                                                            {ebook.description}
-                                                        </Text>
-                                                    )}
-                                                </View>
-                                            </View>
-
-                                            <View style={styles.ebookMeta}>
-                                                <View style={styles.metaItem}>
-                                                    <Ionicons name="download-outline" size={16} color="#6B7280" />
-                                                    <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                        {ebook.file_size}
-                                                    </Text>
-                                                </View>
-                                                <View style={styles.metaItem}>
-                                                    <Ionicons name="calendar-outline" size={16} color="#6B7280" />
-                                                    <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                        {new Date(ebook.upload_date).toLocaleDateString()}
-                                                    </Text>
-                                                </View>
-                                            </View>
-
-                                            <TouchableOpacity
-                                                style={styles.downloadButton}
-                                                onPress={() => handleOpenFile(ebook.file_url)}
-                                            >
-                                                <Ionicons name="download" size={16} color="#fff" />
-                                                <Text style={[styles.downloadButtonText, { fontSize: isSmallScreen ? 14 : 15 }]}>
-                                                    Download
-                                                </Text>
-                                            </TouchableOpacity>
-                                        </View>
-                                    ))}
-                                </View>
-                            )}
+                            {renderViewContent()}
                         </View>
                     ) : (
-                        // Update Tab Content
-                        <View style={styles.updateContent}>
-                            <TouchableOpacity
-                                style={styles.addButton}
-                                onPress={() => setShowAddModal(true)}
-                            >
-                                <Ionicons name="add-circle" size={24} color="#fff" />
-                                <Text style={[styles.addButtonText, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                    Add New eBook
-                                </Text>
-                            </TouchableOpacity>
-
-                            {ebooks.length > 0 && (
-                                <View style={styles.manageSection}>
-                                    <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-                                        Manage Existing eBooks
-                                    </Text>
-                                    {ebooks.map((ebook) => (
-                                        <View key={ebook.id} style={styles.manageCard}>
-                                            <View style={styles.manageInfo}>
-                                                <Text style={[styles.manageTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
-                                                    {ebook.title}
-                                                </Text>
-                                                <Text style={[styles.manageDate, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                                                    Uploaded: {new Date(ebook.upload_date).toLocaleDateString()}
-                                                </Text>
-                                            </View>
-                                            <View style={styles.manageActions}>
-                                                <TouchableOpacity
-                                                    style={styles.editButton}
-                                                    onPress={() => setEditingEbook(ebook)}
-                                                >
-                                                    <Ionicons name="pencil" size={16} color="#3B82F6" />
-                                                </TouchableOpacity>
-                                                <TouchableOpacity
-                                                    style={styles.deleteButton}
-                                                    onPress={() => handleDeleteEbook(ebook)}
-                                                >
-                                                    <Ionicons name="trash" size={16} color="#EF4444" />
-                                                </TouchableOpacity>
-                                            </View>
-                                        </View>
-                                    ))}
-                                </View>
-                            )}
-                        </View>
+                        renderUpdateContent()
                     )}
                 </ScrollView>
 
@@ -355,12 +490,13 @@ const EbooksPage = () => {
                     onRequestClose={() => {
                         setShowAddModal(false);
                         setEditingEbook(null);
+                        setNewEbook({ title: '', author: '', selectedFile: null });
                     }}
                 >
                     <View style={styles.modalOverlay}>
-                        <View style={[styles.modalContent, { maxWidth: isSmallScreen ? screenData.width - 40 : 500 }]}>
+                        <View style={[styles.modalContent, { width: isSmallScreen ? '100%' : '80%' }]}>
                             <View style={styles.modalHeader}>
-                                <Text style={[styles.modalTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+                                <Text style={[styles.modalTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
                                     {editingEbook ? 'Edit eBook' : 'Add New eBook'}
                                 </Text>
                                 <TouchableOpacity
@@ -368,78 +504,76 @@ const EbooksPage = () => {
                                     onPress={() => {
                                         setShowAddModal(false);
                                         setEditingEbook(null);
+                                        setNewEbook({ title: '', author: '', selectedFile: null });
                                     }}
                                 >
-                                    <Ionicons name="close" size={24} color="#6B7280" />
+                                    <Ionicons name="close" size={20} color="#6B7280" />
                                 </TouchableOpacity>
                             </View>
 
-                            <ScrollView style={styles.modalBody}>
+                            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
                                 <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>Title *</Text>
+                                    <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Title *
+                                    </Text>
                                     <TextInput
-                                        style={styles.textInput}
-                                        placeholder="Enter eBook title"
+                                        style={[styles.textInput, { fontSize: isSmallScreen ? 14 : 16 }]}
                                         value={editingEbook ? editingEbook.title : newEbook.title}
                                         onChangeText={(text) => {
                                             if (editingEbook) {
-                                                setEditingEbook({ ...editingEbook, title: text });
+                                                setEditingEbook(prev => prev ? { ...prev, title: text } : null);
                                             } else {
-                                                setNewEbook({ ...newEbook, title: text });
+                                                setNewEbook(prev => ({ ...prev, title: text }));
                                             }
                                         }}
+                                        placeholder="Enter eBook title"
+                                        placeholderTextColor="#9CA3AF"
                                     />
                                 </View>
 
                                 <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>Description</Text>
+                                    <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Author *
+                                    </Text>
                                     <TextInput
-                                        style={[styles.textInput, styles.textArea]}
-                                        placeholder="Enter eBook description"
-                                        multiline
-                                        numberOfLines={4}
-                                        value={editingEbook ? editingEbook.description : newEbook.description}
+                                        style={[styles.textInput, { fontSize: isSmallScreen ? 14 : 16 }]}
+                                        value={editingEbook ? editingEbook.author : newEbook.author}
                                         onChangeText={(text) => {
                                             if (editingEbook) {
-                                                setEditingEbook({ ...editingEbook, description: text });
+                                                setEditingEbook(prev => prev ? { ...prev, author: text } : null);
                                             } else {
-                                                setNewEbook({ ...newEbook, description: text });
+                                                setNewEbook(prev => ({ ...prev, author: text }));
                                             }
                                         }}
+                                        placeholder="Enter author name"
+                                        placeholderTextColor="#9CA3AF"
                                     />
                                 </View>
 
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>File URL *</Text>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="Enter file download URL"
-                                        value={editingEbook ? editingEbook.file_url : newEbook.file_url}
-                                        onChangeText={(text) => {
-                                            if (editingEbook) {
-                                                setEditingEbook({ ...editingEbook, file_url: text });
-                                            } else {
-                                                setNewEbook({ ...newEbook, file_url: text });
-                                            }
-                                        }}
-                                    />
-                                </View>
-
-                                <View style={styles.inputGroup}>
-                                    <Text style={styles.inputLabel}>File Size</Text>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        placeholder="e.g., 2.5 MB"
-                                        value={editingEbook ? editingEbook.file_size : newEbook.file_size}
-                                        onChangeText={(text) => {
-                                            if (editingEbook) {
-                                                setEditingEbook({ ...editingEbook, file_size: text });
-                                            } else {
-                                                setNewEbook({ ...newEbook, file_size: text });
-                                            }
-                                        }}
-                                    />
-                                </View>
+                                {!editingEbook && (
+                                    <View style={styles.inputGroup}>
+                                        <Text style={[styles.inputLabel, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                            PDF File *
+                                        </Text>
+                                        <TouchableOpacity
+                                            style={[styles.filePickerButton, newEbook.selectedFile && styles.fileSelectedButton]}
+                                            onPress={pickDocument}
+                                        >
+                                            <Ionicons
+                                                name={newEbook.selectedFile ? "document" : "document-attach-outline"}
+                                                size={20}
+                                                color={newEbook.selectedFile ? "#10B981" : "#6B7280"}
+                                            />
+                                            <Text style={[
+                                                styles.filePickerText,
+                                                newEbook.selectedFile && styles.fileSelectedText,
+                                                { fontSize: isSmallScreen ? 14 : 16 }
+                                            ]}>
+                                                {newEbook.selectedFile ? newEbook.selectedFile.name : 'Select PDF File'}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
                             </ScrollView>
 
                             <View style={styles.modalActions}>
@@ -448,18 +582,28 @@ const EbooksPage = () => {
                                     onPress={() => {
                                         setShowAddModal(false);
                                         setEditingEbook(null);
+                                        setNewEbook({ title: '', author: '', selectedFile: null });
                                     }}
                                 >
-                                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                                    <Text style={[styles.cancelButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Cancel
+                                    </Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
-                                    style={[styles.saveButton, updating && styles.disabledButton]}
+                                    style={[
+                                        styles.saveButton,
+                                        (updating || uploading) && styles.disabledButton
+                                    ]}
                                     onPress={editingEbook ? handleEditEbook : handleAddEbook}
-                                    disabled={updating}
+                                    disabled={updating || uploading}
                                 >
-                                    <Text style={styles.saveButtonText}>
-                                        {updating ? 'Saving...' : editingEbook ? 'Update' : 'Add'}
-                                    </Text>
+                                    {(updating || uploading) ? (
+                                        <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                        <Text style={[styles.saveButtonText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                            {editingEbook ? 'Update' : 'Add eBook'}
+                                        </Text>
+                                    )}
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -545,7 +689,6 @@ const styles = {
     loadingText: {
         marginTop: 16,
         color: '#6B7280',
-        fontSize: 16,
     },
     emptyContainer: {
         flex: 1,
@@ -598,7 +741,7 @@ const styles = {
         color: '#374151',
         marginBottom: 4,
     },
-    ebookDescription: {
+    ebookAuthor: {
         color: '#6B7280',
         lineHeight: 20,
     },
@@ -670,6 +813,11 @@ const styles = {
         color: '#374151',
         marginBottom: 4,
     },
+    manageAuthor: {
+        color: '#8B5CF6',
+        fontWeight: '500' as const,
+        marginBottom: 4,
+    },
     manageDate: {
         color: '#6B7280',
     },
@@ -703,7 +851,6 @@ const styles = {
     modalContent: {
         backgroundColor: '#fff',
         borderRadius: 16,
-        width: '100%' as const,
         maxHeight: '80%' as const,
     },
     modalHeader: {
@@ -733,7 +880,6 @@ const styles = {
         marginBottom: 20,
     },
     inputLabel: {
-        fontSize: 16,
         fontWeight: '600' as const,
         color: '#374151',
         marginBottom: 8,
@@ -744,12 +890,30 @@ const styles = {
         borderRadius: 8,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        fontSize: 16,
         backgroundColor: '#fff',
     },
-    textArea: {
-        height: 100,
-        textAlignVertical: 'top' as const,
+    filePickerButton: {
+        borderWidth: 1,
+        borderColor: '#D1D5DB',
+        borderRadius: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#fff',
+        flexDirection: 'row' as const,
+        alignItems: 'center' as const,
+        gap: 8,
+    },
+    fileSelectedButton: {
+        borderColor: '#10B981',
+        backgroundColor: '#F0FDF4',
+    },
+    filePickerText: {
+        color: '#6B7280',
+        flex: 1,
+    },
+    fileSelectedText: {
+        color: '#059669',
+        fontWeight: '500' as const,
     },
     modalActions: {
         flexDirection: 'row' as const,
@@ -769,7 +933,6 @@ const styles = {
     cancelButtonText: {
         color: '#6B7280',
         fontWeight: '600' as const,
-        fontSize: 16,
     },
     saveButton: {
         flex: 1,
@@ -781,7 +944,6 @@ const styles = {
     saveButtonText: {
         color: '#fff',
         fontWeight: '600' as const,
-        fontSize: 16,
     },
     disabledButton: {
         opacity: 0.5,

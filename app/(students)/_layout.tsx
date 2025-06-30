@@ -74,12 +74,37 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase.auth.signOut();
-              if (error) throw error;
+              // Check if there's an active session first
+              const { data: sessionData } = await supabase.auth.getSession();
+
+              if (sessionData.session) {
+                // Only attempt sign out if there's an active session
+                const { error } = await supabase.auth.signOut();
+                if (error) {
+                  console.warn('Logout warning:', error);
+                  // Don't throw error for AuthSessionMissingError
+                  if (error.message.includes('Auth session missing')) {
+                    console.log('No active session to sign out from');
+                  } else {
+                    throw error;
+                  }
+                }
+              } else {
+                console.log('No active session found, proceeding with logout');
+              }
+
+              // Always navigate to auth screen regardless of session state
               router.replace('/(auth)');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to logout');
+            } catch (error: any) {
               console.error('Logout error:', error);
+
+              // Handle the specific AuthSessionMissingError
+              if (error.message?.includes('Auth session missing')) {
+                console.log('Session already cleared, navigating to auth');
+                router.replace('/(auth)');
+              } else {
+                Alert.alert('Error', 'Failed to logout');
+              }
             }
           },
         },
@@ -100,84 +125,90 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
       <View style={{ height: 40 }} />
 
       <View style={{ flex: 1 }}>
-        <DrawerItemList {...props} />
-      </View>
-
-      <View style={{
-        padding: 20,
-        borderTopWidth: 1,
-        borderRadius: 8,
-        backgroundColor: '#111827'
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
-          {userData.user_image ? (
-            <Image
-              source={{ uri: userData.user_image }}
-              style={{
-                width: 50,
-                height: 50,
-                borderRadius: 25,
-                marginRight: 15,
-                backgroundColor: '#e0e0e0'
-              }}
-            />
-          ) : (
-            <View style={{
-              width: 50,
-              height: 50,
-              borderRadius: 25,
-              backgroundColor: '#FCCC42',
-              justifyContent: 'center',
-              alignItems: 'center',
-              marginRight: 15
-            }}>
-              <Text style={{
-                fontSize: 20,
-                fontWeight: 'bold',
-                color: '#fff'
-              }}>
-                {userData.name && userData.name.length > 0 ? userData.name.charAt(0).toUpperCase() : 'U'}
-              </Text>
-            </View>
-          )}
-
-          <View style={{ flex: 1 }}>
-            <Text style={{
-              fontSize: 16,
-              fontWeight: 'bold',
-              color: '#fff',
-              marginBottom: 2
-            }}>
-              {userData.name ? userData.name : 'User'}
-            </Text>
-            <Text style={{
-              fontSize: 14,
-              color: '#fefefe'
-            }} numberOfLines={1}>
-              {userData.email ? userData.email : 'No email'}
-            </Text>
-          </View>
-          <SettingsIcon stroke="white" />
-        </View>
-
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#ff4444',
-            paddingVertical: 12,
-            paddingHorizontal: 20,
-            borderRadius: 8,
-            alignItems: 'center'
-          }}
-          onPress={handleLogout}
+        <DrawerContentScrollView
+          {...props}
+          contentContainerStyle={{ paddingTop: 0, flexGrow: 1 }}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={{
-            color: 'white',
-            fontSize: 16,
-            fontWeight: 'bold'
+          <DrawerItemList {...props} />
+          <View style={{ height: 40 }} />
+          <View style={{
+            padding: 20,
+            borderTopWidth: 1,
+            backgroundColor: '#111827',
+            borderRadius: 8
           }}>
-            Logout
-          </Text>
-        </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+              {userData.user_image ? (
+                <Image
+                  source={{ uri: userData.user_image }}
+                  style={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 25,
+                    marginRight: 15,
+                    backgroundColor: '#e0e0e0'
+                  }}
+                />
+              ) : (
+                <View style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: 25,
+                  backgroundColor: '#FCCC42',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginRight: 15
+                }}>
+                  <Text style={{
+                    fontSize: 20,
+                    fontWeight: 'bold',
+                    color: '#fff'
+                  }}>
+                    {userData.name && userData.name.length > 0 ? userData.name.charAt(0).toUpperCase() : 'U'}
+                  </Text>
+                </View>
+              )}
+
+              <View style={{ flex: 1 }}>
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  marginBottom: 2
+                }}>
+                  {userData.name ? userData.name : 'User'}
+                </Text>
+                <Text style={{
+                  fontSize: 14,
+                  color: '#fefefe'
+                }} numberOfLines={1}>
+                  {userData.email ? userData.email : 'No email'}
+                </Text>
+              </View>
+              <SettingsIcon stroke="white" />
+            </View>
+
+            <TouchableOpacity
+              style={{
+                backgroundColor: '#ff4444',
+                paddingVertical: 12,
+                paddingHorizontal: 20,
+                borderRadius: 8,
+                alignItems: 'center'
+              }}
+              onPress={handleLogout}
+            >
+              <Text style={{
+                color: 'white',
+                fontSize: 16,
+                fontWeight: 'bold'
+              }}>
+                Logout
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </DrawerContentScrollView>
       </View>
     </DrawerContentScrollView>
   );
@@ -215,7 +246,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Home',
             drawerLabel: 'Home',
-            drawerIcon: () => <HomeIcon stroke="white"/>
+            drawerIcon: () => <HomeIcon stroke="white" />
           }}
         />
         <Drawer.Screen
@@ -223,7 +254,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Batches',
             drawerLabel: 'My Batches',
-            drawerIcon: () => <BatchesIcon stroke="white"/>
+            drawerIcon: () => <BatchesIcon stroke="white" />
           }}
         />
         <Drawer.Screen
@@ -231,7 +262,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Test Series',
             drawerLabel: 'Test Series',
-            drawerIcon: () => <TestSeriesIcon stroke="white"/>
+            drawerIcon: () => <TestSeriesIcon stroke="white" />
           }}
         />
         <Drawer.Screen
@@ -239,7 +270,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Coding League',
             drawerLabel: 'Coding League',
-            drawerIcon: () => <CodingLeagueIcon stroke="white"/>
+            drawerIcon: () => <CodingLeagueIcon stroke="white" />
           }}
         />
         <Drawer.Screen
@@ -247,7 +278,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Attendance',
             drawerLabel: 'My Attendance',
-            drawerIcon: () => <AttendanceIcon stroke="white"/>
+            drawerIcon: () => <AttendanceIcon stroke="white" />
           }}
         />
         <Drawer.Screen
@@ -255,7 +286,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Performance',
             drawerLabel: 'My Performance',
-            drawerIcon: () => <PerformanceIcon fill="white"/>
+            drawerIcon: () => <PerformanceIcon fill="white" />
           }}
         />
         <Drawer.Screen
@@ -263,7 +294,7 @@ export default function StudentsLayout() {
           options={{
             title: 'Payment',
             drawerLabel: 'Payment',
-            drawerIcon: () => <PaymentIcon stroke="white"/>
+            drawerIcon: () => <PaymentIcon stroke="white" />
           }}
         />
       </Drawer>
