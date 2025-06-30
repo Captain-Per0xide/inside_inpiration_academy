@@ -149,18 +149,43 @@ class AuthService {
   // Logout user and clear onboarding status
   async logout(): Promise<void> {
     try {
-      // Sign out from Supabase
-      await supabase.auth.signOut();
+      // Check if there's an active session first
+      const { data: sessionData } = await supabase.auth.getSession();
 
-      // Clear cached user data
+      if (sessionData.session) {
+        // Sign out from Supabase only if there's an active session
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.warn("Logout warning:", error);
+          // Don't throw error for AuthSessionMissingError
+          if (!error.message.includes("Auth session missing")) {
+            throw error;
+          }
+        }
+      } else {
+        console.log("No active session found during logout");
+      }
+
+      // Clear cached user data regardless of session state
       this.currentUser = null;
       this.currentSession = null;
 
       // Clear onboarding status so user sees onboarding again on next login
       await AsyncStorage.removeItem("hasSeenOnboarding");
-    } catch (error) {
+
+      console.log("Logout completed successfully");
+    } catch (error: any) {
       console.error("Error during logout:", error);
-      throw error;
+
+      // Handle AuthSessionMissingError gracefully
+      if (error.message?.includes("Auth session missing")) {
+        console.log("Session already cleared, completing logout");
+        this.currentUser = null;
+        this.currentSession = null;
+        await AsyncStorage.removeItem("hasSeenOnboarding");
+      } else {
+        throw error;
+      }
     }
   }
 

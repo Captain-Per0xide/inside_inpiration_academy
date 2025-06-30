@@ -250,23 +250,59 @@ const StudentsDashboard = () => {
     const getResponsiveLayout = useCallback(() => {
         const { width } = screenData;
 
-        if (width < 600) {
-            return { numColumns: 1, cardWidth: width - 40 };
-        } else if (width < 900) {
-            return { numColumns: 2, cardWidth: (width - 60) / 2 };
-        } else if (width < 1200) {
-            return { numColumns: 3, cardWidth: (width - 80) / 3 };
+        // More responsive breakpoints for better mobile experience
+        if (width < 400) {
+            // Very small phones (iPhone SE, etc.)
+            return { numColumns: 1, cardWidth: width - 40, cardPadding: 12 };
+        } else if (width < 600) {
+            // Small phones (most mobile devices)
+            return { numColumns: 1, cardWidth: width - 40, cardPadding: 16 };
+        } else if (width < 800) {
+            // Large phones/small tablets (landscape phones, iPad mini)
+            return { numColumns: 2, cardWidth: (width - 60) / 2, cardPadding: 16 };
+        } else if (width < 1000) {
+            // Tablets
+            return { numColumns: 2, cardWidth: (width - 80) / 2, cardPadding: 20 };
+        } else if (width < 1400) {
+            // Large tablets/small desktops
+            return { numColumns: 3, cardWidth: (width - 100) / 3, cardPadding: 20 };
         } else {
-            return { numColumns: 4, cardWidth: (width - 100) / 4 };
+            // Large desktops
+            return { numColumns: 4, cardWidth: (width - 120) / 4, cardPadding: 24 };
         }
     }, [screenData]);
 
-    const { numColumns, cardWidth } = getResponsiveLayout();
+    const { numColumns, cardWidth, cardPadding } = getResponsiveLayout();
 
     const renderCourseCard = ({ item }: { item: Course }) => {
+        const isVerySmallScreen = screenData.width < 400;
         const isSmallScreen = screenData.width < 600;
-        const isMediumScreen = screenData.width < 900;
+        const isMediumScreen = screenData.width < 800;
         const hasPendingPayment = pendingPayments.has(item.id);
+
+        // Responsive sizing based on screen width
+        const cardStyle = {
+            width: numColumns === 1 ? '100%' : cardWidth,
+            minHeight: isVerySmallScreen ? 200 : isSmallScreen ? 220 : isMediumScreen ? 240 : 260,
+            padding: cardPadding,
+            margin: isVerySmallScreen ? 4 : isSmallScreen ? 6 : 8,
+        };
+
+        const textSizes = {
+            codename: isVerySmallScreen ? 10 : isSmallScreen ? 12 : 14,
+            title: isVerySmallScreen ? 16 : isSmallScreen ? 18 : isMediumScreen ? 19 : 20,
+            info: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
+            instructor: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
+            instructorLabel: isVerySmallScreen ? 10 : isSmallScreen ? 12 : 14,
+            button: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
+        };
+
+        const iconSizes = {
+            courseType: isVerySmallScreen ? 20 : isSmallScreen ? 24 : 26,
+            info: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
+            instructor: isVerySmallScreen ? 32 : isSmallScreen ? 36 : 44,
+            buttonIcon: isVerySmallScreen ? 10 : isSmallScreen ? 12 : 14,
+        };
 
         return (
             <View style={[
@@ -274,21 +310,27 @@ const StudentsDashboard = () => {
                 {
                     backgroundColor: item.full_name_color,
                     width: numColumns === 1 ? '100%' : cardWidth,
-                    minHeight: isSmallScreen ? 220 : isMediumScreen ? 260 : 280,
+                    minHeight: cardStyle.minHeight,
+                    padding: cardStyle.padding,
+                    margin: cardStyle.margin,
                 }
             ]}>
                 <View style={styles.cardHeader}>
-                    <View style={[styles.codenameTag, { backgroundColor: item.codename_color }]}>
+                    <View style={[styles.codenameTag, {
+                        backgroundColor: item.codename_color,
+                        paddingHorizontal: isVerySmallScreen ? 8 : 12,
+                        paddingVertical: isVerySmallScreen ? 4 : 6,
+                    }]}>
                         <Text style={[
                             styles.codenameText,
-                            { fontSize: isSmallScreen ? 12 : 14 }
+                            { fontSize: textSizes.codename }
                         ]}>
                             {item.codename}
                         </Text>
                     </View>
                     <Ionicons
                         name={item.course_type === "Core Curriculum" ? "school-outline" : "briefcase-outline"}
-                        size={isSmallScreen ? 24 : 26}
+                        size={iconSizes.courseType}
                         color="black"
                     />
                 </View>
@@ -296,52 +338,69 @@ const StudentsDashboard = () => {
                 <Text style={[
                     styles.courseTitle,
                     {
-                        fontSize: isSmallScreen ? 18 : isMediumScreen ? 19 : 20,
-                        marginBottom: isSmallScreen ? 12 : 16
+                        fontSize: textSizes.title,
+                        marginBottom: isVerySmallScreen ? 8 : isSmallScreen ? 12 : 16,
+                        lineHeight: textSizes.title + 4,
                     }
-                ]}>
+                ]} numberOfLines={isVerySmallScreen ? 2 : 3}>
                     {item.full_name}
                 </Text>
 
-                <View style={styles.courseInfo}>
-                    <View style={styles.infoRow}>
-                        <Ionicons name="time-outline" size={isSmallScreen ? 14 : 16} color="black" />
+                <View style={[styles.courseInfo, {
+                    marginBottom: isVerySmallScreen ? 8 : isSmallScreen ? 12 : 16
+                }]}>
+                    <View style={[styles.infoRow, { marginBottom: isVerySmallScreen ? 6 : 8 }]}>
+                        <Ionicons name="time-outline" size={iconSizes.info} color="black" />
                         <Text style={[
                             styles.infoText,
-                            { fontSize: isSmallScreen ? 14 : 16 }
+                            {
+                                fontSize: textSizes.info,
+                                lineHeight: textSizes.info + 2,
+                            }
                         ]}>
-                            Course Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
+                            Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
                         </Text>
                     </View>
 
-                    <View style={styles.infoRow}>
-                        <Ionicons name="cash-outline" size={isSmallScreen ? 14 : 16} color="black" />
+                    <View style={[styles.infoRow, { marginBottom: isVerySmallScreen ? 6 : 8 }]}>
+                        <Ionicons name="cash-outline" size={iconSizes.info} color="black" />
                         <Text style={[
                             styles.infoText,
-                            { fontSize: isSmallScreen ? 14 : 16 }
+                            {
+                                fontSize: textSizes.info,
+                                lineHeight: textSizes.info + 2,
+                            }
                         ]}>
                             {getFeeLabel(item)}: {getFeeDisplay(item)}
                         </Text>
                     </View>
 
-                    <View style={styles.infoRow}>
-                        <Text style={{ fontSize: isSmallScreen ? 14 : 16, fontWeight: '400', color: 'black' }}>
-                            Includes 2 eBooks, 2 Notes & 2 Sample Question Set with PYQ solved
-                        </Text>
-                    </View>
+                    {!isVerySmallScreen && (
+                        <View style={styles.infoRow}>
+                            <Text style={{
+                                fontSize: textSizes.info - 2,
+                                fontWeight: '400',
+                                color: 'black',
+                                lineHeight: textSizes.info,
+                            }} numberOfLines={isSmallScreen ? 2 : 3}>
+                                Includes 2 eBooks, 2 Notes & 2 Sample Question Set with PYQ solved
+                            </Text>
+                        </View>
+                    )}
                 </View>
 
-                <View style={styles.instructorSection}>
-                    <View style={styles.instructorInfo}>
+                <View style={[styles.instructorSection, { marginTop: 'auto' }]}>
+                    <View style={[styles.instructorInfo, { flex: 1, marginRight: 8 }]}>
                         {item.instructor_image ? (
                             <Image
                                 source={{ uri: item.instructor_image }}
                                 style={[
                                     styles.instructorImage,
                                     {
-                                        width: isSmallScreen ? 36 : 44,
-                                        height: isSmallScreen ? 36 : 44,
-                                        borderRadius: isSmallScreen ? 18 : 22
+                                        width: iconSizes.instructor,
+                                        height: iconSizes.instructor,
+                                        borderRadius: iconSizes.instructor / 2,
+                                        marginRight: isVerySmallScreen ? 8 : 12,
                                     }
                                 ]}
                             />
@@ -349,24 +408,25 @@ const StudentsDashboard = () => {
                             <View style={[
                                 styles.instructorImagePlaceholder,
                                 {
-                                    width: isSmallScreen ? 32 : 40,
-                                    height: isSmallScreen ? 32 : 40,
-                                    borderRadius: isSmallScreen ? 16 : 20
+                                    width: iconSizes.instructor,
+                                    height: iconSizes.instructor,
+                                    borderRadius: iconSizes.instructor / 2,
+                                    marginRight: isVerySmallScreen ? 8 : 12,
                                 }
                             ]}>
-                                <Ionicons name="person" size={isSmallScreen ? 16 : 20} color="#666" />
+                                <Ionicons name="person" size={iconSizes.instructor / 2} color="#666" />
                             </View>
                         )}
-                        <View style={{ flex: 1 }}>
+                        <View style={{ flex: 1, minWidth: 0 }}>
                             <Text style={[
                                 styles.instructorLabel,
-                                { fontSize: isSmallScreen ? 12 : 14 }
+                                { fontSize: textSizes.instructorLabel }
                             ]}>
                                 Instructor
                             </Text>
                             <Text style={[
                                 styles.instructorName,
-                                { fontSize: isSmallScreen ? 14 : 16 }
+                                { fontSize: textSizes.instructor }
                             ]} numberOfLines={1}>
                                 {item.instructor}
                             </Text>
@@ -377,6 +437,11 @@ const StudentsDashboard = () => {
                         style={[
                             hasPendingPayment ? styles.pendingButton : styles.buyNowButton,
                             hasPendingPayment && styles.disabledButton,
+                            {
+                                paddingHorizontal: isVerySmallScreen ? 12 : 16,
+                                paddingVertical: isVerySmallScreen ? 6 : 8,
+                                minWidth: isVerySmallScreen ? 80 : 100,
+                            }
                         ]}
                         onPress={() => handleBuyNow(item)}
                         disabled={hasPendingPayment}
@@ -385,21 +450,21 @@ const StudentsDashboard = () => {
                             <>
                                 <Ionicons
                                     name="time-outline"
-                                    size={isSmallScreen ? 12 : 14}
+                                    size={iconSizes.buttonIcon}
                                     color="#6B7280"
                                     style={{ marginRight: 4 }}
                                 />
                                 <Text style={[
                                     styles.pendingButtonText,
-                                    { fontSize: isSmallScreen ? 12 : 14 }
-                                ]}>
-                                    Waiting for verification
+                                    { fontSize: textSizes.button - 2 }
+                                ]} numberOfLines={isVerySmallScreen ? 2 : 1}>
+                                    {isVerySmallScreen ? 'Waiting' : 'Waiting for verification'}
                                 </Text>
                             </>
                         ) : (
                             <Text style={[
                                 styles.buyNowButtonText,
-                                { fontSize: isSmallScreen ? 14 : 16 }
+                                { fontSize: textSizes.button }
                             ]}>
                                 Buy Now
                             </Text>

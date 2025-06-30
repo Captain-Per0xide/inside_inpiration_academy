@@ -89,12 +89,37 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase.auth.signOut();
-              if (error) throw error;
+              // Check if there's an active session first
+              const { data: sessionData } = await supabase.auth.getSession();
+
+              if (sessionData.session) {
+                // Only attempt sign out if there's an active session
+                const { error } = await supabase.auth.signOut();
+                if (error) {
+                  console.warn('Logout warning:', error);
+                  // Don't throw error for AuthSessionMissingError
+                  if (error.message.includes('Auth session missing')) {
+                    console.log('No active session to sign out from');
+                  } else {
+                    throw error;
+                  }
+                }
+              } else {
+                console.log('No active session found, proceeding with logout');
+              }
+
+              // Always navigate to auth screen regardless of session state
               router.replace('/(auth)');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to logout');
+            } catch (error: any) {
               console.error('Logout error:', error);
+
+              // Handle the specific AuthSessionMissingError
+              if (error.message?.includes('Auth session missing')) {
+                console.log('Session already cleared, navigating to auth');
+                router.replace('/(auth)');
+              } else {
+                Alert.alert('Error', 'Failed to logout');
+              }
             }
           },
         },
