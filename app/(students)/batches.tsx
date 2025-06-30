@@ -22,13 +22,6 @@ interface Course {
     suspensionReason?: string;
     overdueMonths?: number;
     suspendedDate?: string;
-    course_end?: {
-        type: 'now' | 'scheduled';
-        status: 'completed' | 'scheduled_for_completion';
-        marked_at: string;
-        marked_by: string;
-        completed_date: string;
-    };
 }
 
 interface EnrollmentData {
@@ -45,65 +38,6 @@ const MyBatchesScreen = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [screenData, setScreenData] = useState(Dimensions.get('window'));
-
-    // Helper functions for course completion status
-    const isCourseCompleted = (course: Course) => {
-        return course.course_end?.status === 'completed';
-    };
-
-    const isCourseScheduledForCompletion = (course: Course) => {
-        return course.course_end?.status === 'scheduled_for_completion';
-    };
-
-    const getCompletionDate = (course: Course) => {
-        if (!course.course_end?.completed_date) return null;
-        return new Date(course.course_end.completed_date);
-    };
-
-    const isCompletionDatePassed = (course: Course) => {
-        const completionDate = getCompletionDate(course);
-        if (!completionDate) return false;
-        return new Date() >= completionDate;
-    };
-
-    const shouldShowCourse = (course: Course) => {
-        // Don't show if course is completed immediately
-        if (isCourseCompleted(course)) {
-            return false;
-        }
-
-        // Show if not scheduled for completion
-        if (!isCourseScheduledForCompletion(course)) {
-            return true;
-        }
-
-        // For scheduled completion, show only if completion date hasn't passed
-        return !isCompletionDatePassed(course);
-    };
-
-    const getCompletionWarningMessage = (course: Course) => {
-        if (!isCourseScheduledForCompletion(course)) return null;
-
-        const completionDate = getCompletionDate(course);
-        if (!completionDate) return null;
-
-        const now = new Date();
-        const timeDiff = completionDate.getTime() - now.getTime();
-        const daysUntilCompletion = Math.ceil(timeDiff / (1000 * 3600 * 24));
-
-        if (daysUntilCompletion <= 0) {
-            return "This course has been completed and will no longer be accessible.";
-        } else if (daysUntilCompletion <= 7) {
-            return `This course will be completed in ${daysUntilCompletion} day${daysUntilCompletion > 1 ? 's' : ''}. Please complete any pending work.`;
-        } else {
-            const completionDateStr = completionDate.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-            });
-            return `This course is scheduled to be completed on ${completionDateStr}.`;
-        }
-    };
 
     // Helper functions for course type-based fee rendering
     const getCourseFee = (course: Course) => {
@@ -122,7 +56,7 @@ const MyBatchesScreen = () => {
 
     useEffect(() => {
         fetchEnrolledCourses();
-    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    }, []);
 
     useEffect(() => {
         const onChange = (result: { window: any }) => {
@@ -140,10 +74,10 @@ const MyBatchesScreen = () => {
             } else {
                 setLoading(true);
             }
-
+            
             // Get current user session
             const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
+            
             if (sessionError) {
                 console.error('Session error:', sessionError);
                 Alert.alert('Error', 'Failed to get user session');
@@ -180,7 +114,7 @@ const MyBatchesScreen = () => {
             // Fetch course details for enrolled courses
             const { data: coursesData, error: coursesError } = await supabase
                 .from('courses')
-                .select('*, course_end')
+                .select('*')
                 .in('id', courseIds);
 
             if (coursesError) {
@@ -189,7 +123,7 @@ const MyBatchesScreen = () => {
                 return;
             }
 
-            // Add enrollment status to each course and filter based on completion status
+            // Add enrollment status to each course
             const coursesWithStatus = (coursesData || []).map((course) => {
                 const enrollment = enrollmentData.find((enroll) => enroll.course_id === course.id);
                 return {
@@ -199,7 +133,7 @@ const MyBatchesScreen = () => {
                     overdueMonths: enrollment?.overdue_months || 0,
                     suspendedDate: enrollment?.suspended_date || null
                 };
-            }).filter(course => shouldShowCourse(course)); // Filter out completed courses
+            });
 
             setCourses(coursesWithStatus);
         } catch (error) {
@@ -222,15 +156,24 @@ const MyBatchesScreen = () => {
         fetchEnrolledCourses(true);
     };
 
+    const parseSchedule = (scheduleString: string) => {
+        try {
+            // Remove brackets and parse the schedule
+            const cleanSchedule = scheduleString.replace(/[\[\]]/g, '').trim();
+            return cleanSchedule;
+        } catch (error) {
+            return 'Schedule not available';
+        }
+    };
+
     const renderCourseItem = ({ item }: { item: Course }) => {
         const isSmallScreen = screenData.width < 600;
         const isPending = item.enrollmentStatus === 'pending';
-        const completionWarning = getCompletionWarningMessage(item);
-
+        
         return (
             <View style={[
-                styles.courseCard,
-                {
+                styles.courseCard, 
+                { 
                     backgroundColor: item.full_name_color,
                     opacity: isPending ? 0.7 : 1,
                 }
@@ -251,51 +194,32 @@ const MyBatchesScreen = () => {
                                 <Text style={styles.pendingBadgeText}>SUSPENDED</Text>
                             </View>
                         )}
-                        {isCourseScheduledForCompletion(item) && (
-                            <View style={[styles.pendingBadge, { backgroundColor: '#F59E0B', borderColor: '#D97706', marginLeft: isPending ? 8 : 0 }]}>
-                                <Ionicons name="time" size={12} color="#fff" style={{ marginRight: 4 }} />
-                                <Text style={styles.pendingBadgeText}>COMPLETING SOON</Text>
-                            </View>
-                        )}
-                        <Ionicons
+                        <Ionicons 
                             name={item.course_type === "Core Curriculum" ? "school-outline" : "briefcase-outline"}
                             size={isSmallScreen ? 24 : 26}
                             color="black"
-                            style={{ marginLeft: (isPending || isCourseScheduledForCompletion(item)) ? 8 : 0 }}
+                            style={{ marginLeft: isPending ? 8 : 0 }}
                         />
                     </View>
                 </View>
-
+                
                 <Text style={[
                     styles.courseTitle,
-                    {
+                    { 
                         fontSize: isSmallScreen ? 18 : 20,
                         marginBottom: isSmallScreen ? 12 : 16
                     }
                 ]}>
                     {item.full_name}
                 </Text>
-
-                {/* Completion Warning */}
-                {completionWarning && (
-                    <View style={styles.completionWarningContainer}>
-                        <View style={styles.completionWarningHeader}>
-                            <Ionicons name="warning" size={20} color="#F59E0B" />
-                            <Text style={styles.completionWarningTitle}>COURSE COMPLETION NOTICE</Text>
-                        </View>
-                        <Text style={styles.completionWarningText}>
-                            {completionWarning}
-                        </Text>
-                    </View>
-                )}
-
+                
                 {isPending && (
                     <View style={styles.suspensionContainer}>
                         <View style={styles.suspensionHeader}>
                             <Ionicons name="warning" size={20} color="#DC2626" />
                             <Text style={styles.suspensionTitle}>ACCESS SUSPENDED</Text>
                         </View>
-
+                        
                         {item.suspensionReason ? (
                             <View style={styles.reasonContainer}>
                                 <Text style={styles.reasonLabel}>Reason:</Text>
@@ -308,7 +232,7 @@ const MyBatchesScreen = () => {
                                 Payment overdue - Contact admin or clear your dues immediately
                             </Text>
                         )}
-
+                        
                         {(item.overdueMonths ?? 0) > 0 && (
                             <View style={styles.overdueInfo}>
                                 <Ionicons name="time" size={16} color="#DC2626" />
@@ -317,7 +241,7 @@ const MyBatchesScreen = () => {
                                 </Text>
                             </View>
                         )}
-
+                        
                         <View style={styles.urgentAction}>
                             <Ionicons name="flash" size={16} color="#DC2626" />
                             <Text style={styles.urgentActionText}>
@@ -326,7 +250,7 @@ const MyBatchesScreen = () => {
                         </View>
                     </View>
                 )}
-
+                
                 <View style={styles.courseInfo}>
                     <View style={styles.infoRow}>
                         <Ionicons name="time-outline" size={isSmallScreen ? 14 : 16} color="black" />
@@ -334,10 +258,10 @@ const MyBatchesScreen = () => {
                             styles.infoText,
                             { fontSize: isSmallScreen ? 14 : 16 }
                         ]}>
-                            Course Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
+                           Course Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
                         </Text>
                     </View>
-
+                    
                     <View style={styles.infoRow}>
                         <Ionicons name="cash-outline" size={isSmallScreen ? 14 : 16} color="black" />
                         <Text style={[
@@ -347,22 +271,22 @@ const MyBatchesScreen = () => {
                             {getFeeLabel(item)}: {getFeeDisplay(item)}
                         </Text>
                     </View>
-
+                    
                     <View style={styles.infoRow}>
                         <Text style={{ fontSize: isSmallScreen ? 14 : 16, fontWeight: '400', color: 'black' }}>
                             Includes 2 eBooks, 2 Notes & 2 Sample Question Set with PYQ solved
                         </Text>
                     </View>
                 </View>
-
+                
                 <View style={styles.instructorSection}>
                     <View style={styles.instructorInfo}>
                         {item.instructor_image ? (
-                            <Image
-                                source={{ uri: item.instructor_image }}
+                            <Image 
+                                source={{ uri: item.instructor_image }} 
                                 style={[
                                     styles.instructorImage,
-                                    {
+                                    { 
                                         width: isSmallScreen ? 36 : 44,
                                         height: isSmallScreen ? 36 : 44,
                                         borderRadius: isSmallScreen ? 18 : 22
@@ -372,7 +296,7 @@ const MyBatchesScreen = () => {
                         ) : (
                             <View style={[
                                 styles.instructorImagePlaceholder,
-                                {
+                                { 
                                     width: isSmallScreen ? 32 : 40,
                                     height: isSmallScreen ? 32 : 40,
                                     borderRadius: isSmallScreen ? 16 : 20
@@ -396,8 +320,8 @@ const MyBatchesScreen = () => {
                             </Text>
                         </View>
                     </View>
-
-                    <TouchableOpacity
+                    
+                    <TouchableOpacity 
                         style={[
                             styles.viewButton,
                             isPending && styles.viewButtonDisabled
@@ -432,28 +356,28 @@ const MyBatchesScreen = () => {
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
                 <Text style={[styles.title, { fontSize: screenData.width < 600 ? 20 : 24 }]}>My Batches</Text>
-                <TouchableOpacity
+                <TouchableOpacity 
                     style={styles.refreshButton}
                     onPress={handleManualRefresh}
                     disabled={refreshing}
                 >
-                    <Ionicons
-                        name="refresh-outline"
-                        size={screenData.width < 600 ? 22 : 24}
-                        color="#6366F1"
-                        style={{
-                            transform: [{ rotate: refreshing ? '360deg' : '0deg' }]
+                    <Ionicons 
+                        name="refresh-outline" 
+                        size={screenData.width < 600 ? 22 : 24} 
+                        color="#6366F1" 
+                        style={{ 
+                            transform: [{ rotate: refreshing ? '360deg' : '0deg' }] 
                         }}
                     />
                 </TouchableOpacity>
             </View>
-
+            
             {courses.length === 0 ? (
                 <View style={styles.emptyContainer}>
-                    <Ionicons
-                        name="school-outline"
-                        size={screenData.width < 600 ? 60 : 80}
-                        color="#666"
+                    <Ionicons 
+                        name="school-outline" 
+                        size={screenData.width < 600 ? 60 : 80} 
+                        color="#666" 
                     />
                     <Text style={[styles.emptyText, { fontSize: screenData.width < 600 ? 18 : 20 }]}>
                         No batches enrolled yet
@@ -461,7 +385,7 @@ const MyBatchesScreen = () => {
                     <Text style={[styles.emptySubText, { fontSize: screenData.width < 600 ? 14 : 16 }]}>
                         Contact admin to enroll in courses
                     </Text>
-                    <TouchableOpacity
+                    <TouchableOpacity 
                         style={styles.refreshEmptyButton}
                         onPress={handleManualRefresh}
                         disabled={refreshing}
@@ -781,32 +705,6 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         marginLeft: 6,
         textTransform: 'uppercase',
-    },
-    completionWarningContainer: {
-        backgroundColor: 'rgba(245, 158, 11, 0.1)',
-        borderLeftWidth: 4,
-        borderLeftColor: '#F59E0B',
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 12,
-    },
-    completionWarningHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-    completionWarningTitle: {
-        color: '#F59E0B',
-        fontSize: 16,
-        fontWeight: 'bold',
-        marginLeft: 8,
-        textTransform: 'uppercase',
-    },
-    completionWarningText: {
-        color: '#D97706',
-        fontSize: 14,
-        fontWeight: '500',
-        lineHeight: 18,
     },
 });
 
