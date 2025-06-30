@@ -89,6 +89,18 @@ export const determineUserRoute = async (userId: string): Promise<string> => {
  */
 export const determineAppRoute = async (): Promise<string> => {
   try {
+    // Check authentication status first
+    const isAuthenticated = await authService.isAuthenticated();
+    
+    if (isAuthenticated) {
+      // User is authenticated - get user session to determine route
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        // Send user directly to their role-based dashboard
+        return await determineUserRoute(session.user.id);
+      }
+    }
+
     // Check if user has seen onboarding
     const hasSeenOnboarding = await authService.hasSeenOnboarding();
     
@@ -97,16 +109,8 @@ export const determineAppRoute = async (): Promise<string> => {
       return '/onboarding';
     }
 
-    // Check authentication status
-    const isAuthenticated = await authService.isAuthenticated();
-    
-    if (!isAuthenticated) {
-      // User has seen onboarding but not authenticated - go to auth
-      return '/(auth)';
-    }
-
-    // User is authenticated - go to profile first for completion check
-    return '/(profile)';
+    // User has seen onboarding but not authenticated - go to auth
+    return '/(auth)';
   } catch (error) {
     console.error('Error determining app route:', error);
     // On error, default to onboarding

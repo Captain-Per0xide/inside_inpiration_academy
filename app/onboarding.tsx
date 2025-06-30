@@ -11,7 +11,9 @@ import {
     View,
 } from 'react-native';
 import tw from 'twrnc';
+import { supabase } from '../lib/supabase';
 import { authService } from '../services/authService';
+import { determineUserRoute } from '../utils/routingUtils';
 
 // Import images
 import onboarding1 from '../assets/images/onboarding_1-bg-removed.png';
@@ -61,6 +63,28 @@ const OnboardingScreen = () => {
   const ref = React.useRef<FlatList>(null);
   const router = useRouter();
 
+  // Check if user is already authenticated on component mount
+  React.useEffect(() => {
+    const checkAuthAndRedirect = async () => {
+      try {
+        const isAuthenticated = await authService.isAuthenticated();
+        if (isAuthenticated) {
+          // User is already authenticated, redirect to their dashboard
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            const userRoute = await determineUserRoute(session.user.id);
+            router.replace(userRoute as any);
+            return;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking auth status in onboarding:', error);
+      }
+    };
+
+    checkAuthAndRedirect();
+  }, [router]);
+
   const updateCurrentSlideIndex = (e: any) => {
     const contentOffsetX = e.nativeEvent.contentOffset.x;
     const currentIndex = Math.round(contentOffsetX / width);
@@ -87,10 +111,25 @@ const OnboardingScreen = () => {
     try {
       // Mark that user has seen onboarding
       await authService.markOnboardingAsSeen();
+      
+      // Check if user is already authenticated
+      const isAuthenticated = await authService.isAuthenticated();
+      
+      if (isAuthenticated) {
+        // User is authenticated, send them to their role-based dashboard
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const userRoute = await determineUserRoute(session.user.id);
+          router.push(userRoute as any);
+          return;
+        }
+      }
+      
+      // User not authenticated, go to auth
       router.push('/(auth)');
     } catch (error) {
-      console.error('Error saving onboarding status:', error);
-      // Still navigate even if storage fails
+      console.error('Error navigating from onboarding:', error);
+      // Still navigate even if there's an error
       router.push('/(auth)');
     }
   };

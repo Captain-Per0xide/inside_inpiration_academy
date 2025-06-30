@@ -3,17 +3,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from "react-native";
+import EBooksUpload from "./eBooks-upload";
 
 interface Course {
   id: string;
@@ -49,17 +50,24 @@ interface EnrolledStudent {
   status: 'success' | 'pending';
 }
 
-const CourseDetailsPage = () => {
-  const { courseId } = useLocalSearchParams<{ courseId: string }>();
+interface CourseDetailsPageProps {
+  courseId?: string;
+  onBack?: () => void;
+}
+
+const CourseDetailsPage = ({ courseId: propCourseId, onBack }: CourseDetailsPageProps = {}) => {
+  const routerParams = useLocalSearchParams<{ courseId: string }>();
+  const courseId = propCourseId || routerParams.courseId;
   const [course, setCourse] = useState<Course | null>(null);
   const [loading, setLoading] = useState(true);
   const [screenData, setScreenData] = useState(Dimensions.get("window"));
   const [menuVisible, setMenuVisible] = useState(false);
-  
+  const [currentView, setCurrentView] = useState<'course-details' | 'ebooks'>('course-details');
+
   // Schedule editing states
   const [editingSchedule, setEditingSchedule] = useState(false);
   const [scheduleData, setScheduleData] = useState<ClassSchedule[]>([]);
-  
+
   // Enrolled students states
   const [enrolledStudents, setEnrolledStudents] = useState<EnrolledStudent[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
@@ -69,7 +77,7 @@ const CourseDetailsPage = () => {
 
   // Constants for schedule editing
   const daysOfWeek = [
-    "Sunday", "Monday", "Tuesday", "Wednesday", 
+    "Sunday", "Monday", "Tuesday", "Wednesday",
     "Thursday", "Friday", "Saturday"
   ];
 
@@ -93,7 +101,11 @@ const CourseDetailsPage = () => {
 
   const fetchCourse = useCallback(async () => {
     if (!courseId) {
-      router.back();
+      if (onBack) {
+        onBack();
+      } else {
+        router.back();
+      }
       return;
     }
 
@@ -108,14 +120,22 @@ const CourseDetailsPage = () => {
 
       if (error) {
         console.error("Error fetching course:", error);
-        router.back();
+        if (onBack) {
+          onBack();
+        } else {
+          router.back();
+        }
         return;
       }
 
       setCourse(data);
     } catch (error) {
       console.error("Error in fetchCourse:", error);
-      router.back();
+      if (onBack) {
+        onBack();
+      } else {
+        router.back();
+      }
     } finally {
       setLoading(false);
     }
@@ -154,7 +174,7 @@ const CourseDetailsPage = () => {
 
           if (enrollment) {
             let status: 'success' | 'pending' = 'success';
-            
+
             // Determine status from enrollment data
             if (typeof enrollment === 'object' && enrollment.status) {
               status = enrollment.status;
@@ -227,7 +247,7 @@ const CourseDetailsPage = () => {
 
                 // Refresh the students list
                 await fetchEnrolledStudents();
-                
+
                 Alert.alert("Success", `${studentName}'s enrollment has been approved!`);
               } catch (error) {
                 console.error("Error approving enrollment:", error);
@@ -248,7 +268,7 @@ const CourseDetailsPage = () => {
   }, [fetchCourse, fetchEnrolledStudents]);
 
   const handleBack = () => {
-    router.back();
+    handleBackNavigation();
   };
 
   const handleMarkAsCompleted = () => {
@@ -258,8 +278,8 @@ const CourseDetailsPage = () => {
       "Are you sure you want to mark this course as completed?",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Mark Complete", 
+        {
+          text: "Mark Complete",
           onPress: () => {
             // TODO: Implement mark as completed functionality
             Alert.alert("Success", "Course marked as completed!");
@@ -276,8 +296,8 @@ const CourseDetailsPage = () => {
       "Are you sure you want to delete this course? This action cannot be undone and will remove the course from all enrolled students.",
       [
         { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
+        {
+          text: "Delete",
           style: "destructive",
           onPress: async () => {
             try {
@@ -289,7 +309,7 @@ const CourseDetailsPage = () => {
               // First, remove the course ID from all users' enrolled_courses arrays
               // Since the SQL function doesn't exist, we'll use the JavaScript approach
               console.log("Searching for users enrolled in course:", course.id);
-              
+
               // Get all users who have this course in their enrolled_courses array
               const { data: allUsers, error: fetchError } = await supabase
                 .from("users")
@@ -306,14 +326,14 @@ const CourseDetailsPage = () => {
               // Filter users who have this course enrolled and update them
               const usersToUpdate = allUsers?.filter(user => {
                 if (!user.enrolled_courses) return false;
-                
+
                 // Check if enrolled_courses is in new JSONB format
                 if (Array.isArray(user.enrolled_courses) && user.enrolled_courses.length > 0) {
                   const firstItem = user.enrolled_courses[0];
-                  
+
                   // If it's the new format with objects containing course_id
                   if (typeof firstItem === 'object' && firstItem.course_id) {
-                    return user.enrolled_courses.some((enrollment: any) => 
+                    return user.enrolled_courses.some((enrollment: any) =>
                       enrollment.course_id === course.id
                     );
                   }
@@ -322,7 +342,7 @@ const CourseDetailsPage = () => {
                     return user.enrolled_courses.includes(course.id);
                   }
                 }
-                
+
                 return false;
               }) || [];
 
@@ -331,16 +351,16 @@ const CourseDetailsPage = () => {
               // Update each user's enrolled_courses array
               for (const user of usersToUpdate) {
                 console.log(`Removing course from user ${user.id}`);
-                
+
                 let updatedCourses;
-                
+
                 // Handle new JSONB format
                 if (user.enrolled_courses && user.enrolled_courses.length > 0) {
                   const firstItem = user.enrolled_courses[0];
-                  
+
                   if (typeof firstItem === 'object' && firstItem.course_id) {
                     // New format: filter out the enrollment object with matching course_id
-                    updatedCourses = user.enrolled_courses.filter((enrollment: any) => 
+                    updatedCourses = user.enrolled_courses.filter((enrollment: any) =>
                       enrollment.course_id !== course.id
                     );
                   } else {
@@ -350,7 +370,7 @@ const CourseDetailsPage = () => {
                 } else {
                   updatedCourses = [];
                 }
-                
+
                 const { error: updateError } = await supabase
                   .from("users")
                   .update({ enrolled_courses: updatedCourses })
@@ -375,12 +395,18 @@ const CourseDetailsPage = () => {
               }
 
               console.log("Course deleted successfully");
-              const message = usersToUpdate.length > 0 
+              const message = usersToUpdate.length > 0
                 ? `Course deleted successfully! Removed from ${usersToUpdate.length} enrolled student(s).`
                 : "Course deleted successfully!";
 
               Alert.alert("Success", message, [
-                { text: "OK", onPress: () => router.back() }
+                { text: "OK", onPress: () => {
+                  if (onBack) {
+                    onBack();
+                  } else {
+                    router.back();
+                  }
+                }}
               ]);
 
             } catch (error) {
@@ -423,8 +449,8 @@ const CourseDetailsPage = () => {
   };
 
   const updateSchedule = (index: number, field: keyof ClassSchedule, value: string) => {
-    setScheduleData(prev => 
-      prev.map((schedule, i) => 
+    setScheduleData(prev =>
+      prev.map((schedule, i) =>
         i === index ? { ...schedule, [field]: value } : schedule
       )
     );
@@ -433,11 +459,11 @@ const CourseDetailsPage = () => {
   const saveSchedule = async () => {
     try {
       setSavingSchedule(true);
-      
+
       if (!course?.id) return;
 
       const scheduleJson = JSON.stringify(scheduleData);
-      
+
       const { error } = await supabase
         .from("courses")
         .update({ class_schedule: scheduleJson })
@@ -450,9 +476,9 @@ const CourseDetailsPage = () => {
       // Update local course data
       setCourse(prev => prev ? { ...prev, class_schedule: scheduleJson } : null);
       setEditingSchedule(false);
-      
+
       Alert.alert("Success", "Schedule updated successfully!");
-      
+
     } catch (error) {
       console.error("Error saving schedule:", error);
       Alert.alert("Error", "Failed to save schedule. Please try again.");
@@ -496,602 +522,681 @@ const CourseDetailsPage = () => {
   const isMediumScreen = screenData.width < 900;
   const isCoreCurriculum = course.course_type === "Core Curriculum";
 
+  // Handle back navigation based on current view
+  const handleBackNavigation = () => {
+    if (currentView === 'ebooks') {
+      setCurrentView('course-details');
+    } else {
+      if (onBack) {
+        onBack();
+      } else {
+        router.back();
+      }
+    }
+  };
+
+  // Show eBooks upload component
+  if (currentView === 'ebooks' && course) {
+    return (
+      <EBooksUpload
+        courseId={courseId}
+        courseName={course.full_name}
+        onBack={() => setCurrentView('course-details')}
+      />
+    );
+  }
+
   return (
     <>
-      <Stack.Screen 
-        options={{
-          headerShown: false,
-        }} 
-      />
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Header with back button and menu */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButtonHeader} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-          Course Details
-        </Text>
-        <TouchableOpacity 
-          style={styles.menuButton} 
-          onPress={() => setMenuVisible(true)}
-        >
-          <Ionicons name="ellipsis-vertical" size={24} color="#fff" />
-        </TouchableOpacity>
-        
-        {/* Dropdown Menu - appears under three-dot button */}
-        {menuVisible && (
-          <View style={styles.dropdownMenu}>
-            <TouchableOpacity 
-              style={styles.dropdownItem} 
-              onPress={handleMarkAsCompleted}
-            >
-              <Ionicons name="checkmark-circle-outline" size={18} color="#10B981" />
-              <Text style={styles.dropdownItemText}>Mark as Completed</Text>
-            </TouchableOpacity>
-            
-            <View style={styles.dropdownDivider} />
-            
-            <TouchableOpacity 
-              style={styles.dropdownItem} 
-              onPress={handleDelete}
-            >
-              <Ionicons name="trash-outline" size={18} color="#EF4444" />
-              <Text style={[styles.dropdownItemText, { color: "#EF4444" }]}>Delete</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
-
-      {/* Overlay to close dropdown when clicking outside */}
-      {menuVisible && (
-        <TouchableOpacity 
-          style={styles.dropdownOverlay} 
-          onPress={() => setMenuVisible(false)}
-          activeOpacity={1}
+      {!onBack && (
+        <Stack.Screen
+          options={{
+            headerShown: false,
+          }}
         />
       )}
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        {/* Header with back button and menu */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButtonHeader} onPress={handleBack}>
+            <Ionicons name="arrow-back" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+            Course Details
+          </Text>
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => setMenuVisible(true)}
+          >
+            <Ionicons name="ellipsis-vertical" size={24} color="#fff" />
+          </TouchableOpacity>
 
-      {/* Course Information Section */}
-      <View style={[styles.courseInfoCard, { backgroundColor: course.full_name_color }]}>
-        <View style={styles.courseHeader}>
-          <View style={[styles.codenameTag, { backgroundColor: course.codename_color }]}>
-            <Text style={[styles.codenameText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-              {course.codename}
-            </Text>
-          </View>
-          <Ionicons
-            name={isCoreCurriculum ? "school-outline" : "briefcase-outline"}
-            size={isSmallScreen ? 24 : 26}
-            color="black"
-          />
-        </View>
+          {/* Dropdown Menu - appears under three-dot button */}
+          {menuVisible && (
+            <View style={styles.dropdownMenu}>
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={handleMarkAsCompleted}
+              >
+                <Ionicons name="checkmark-circle-outline" size={18} color="#10B981" />
+                <Text style={styles.dropdownItemText}>Mark as Completed</Text>
+              </TouchableOpacity>
 
-        <Text style={[styles.courseName, { fontSize: isSmallScreen ? 24 : isMediumScreen ? 26 : 28 }]}>
-          {course.full_name}
-        </Text>
+              <View style={styles.dropdownDivider} />
 
-        <View style={styles.courseMetaInfo}>
-          <View style={styles.metaRow}>
-            <Ionicons name="person-outline" size={16} color="black" />
-            <Text style={[styles.metaText, { fontSize: isSmallScreen ? 14 : 16 }]}>
-              Instructor: {course.instructor}
-            </Text>
-          </View>
-
-          <View style={styles.metaRow}>
-            <Ionicons name="time-outline" size={16} color="black" />
-            <Text style={[styles.metaText, { fontSize: isSmallScreen ? 14 : 16 }]}>
-              Duration: {course.course_duration ? `${course.course_duration} months` : "Ongoing"}
-            </Text>
-          </View>
-
-        </View>
-
-        {/* Schedule Section - Moved outside metaRow for better layout */}
-        <View style={styles.scheduleContainer}>
-          <View style={styles.scheduleHeader}>
-            <View style={styles.metaRow}>
-              <Ionicons name="calendar-outline" size={16} color="black" />
-              <Text style={[styles.metaText, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                Schedule:
-              </Text>
+              <TouchableOpacity
+                style={styles.dropdownItem}
+                onPress={handleDelete}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                <Text style={[styles.dropdownItemText, { color: "#EF4444" }]}>Delete</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.editButton} onPress={handleEditSchedule}>
-              <Ionicons name="pencil" size={14} color="#fff" />
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.scheduleList}>
-            {parseSchedule(course.class_schedule).map((schedule: any, index: number) => (
-              <View key={index} style={styles.scheduleItem}>
-                <View style={styles.dayBadge}>
-                  <Text style={[styles.dayText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                    {schedule.day}
-                  </Text>
-                </View>
-                <Text style={[styles.timeText, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                  {schedule.startTime} - {schedule.endTime}
+          )}
+        </View>
+
+        {/* Overlay to close dropdown when clicking outside */}
+        {menuVisible && (
+          <TouchableOpacity
+            style={styles.dropdownOverlay}
+            onPress={() => setMenuVisible(false)}
+            activeOpacity={1}
+          />
+        )}
+
+        {/* Course Information Section */}
+        <View style={[styles.courseInfoCard, { backgroundColor: course.full_name_color }]}>
+          <View style={styles.courseHeader}>
+            <View style={styles.courseHeaderLeft}>
+              <View style={[styles.codenameTag, { backgroundColor: course.codename_color }]}>
+                <Text style={[styles.codenameText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                  {course.codename}
                 </Text>
               </View>
-            ))}
-          </View>
-        </View>
-      </View>
-
-      {/* Course Videos Section */}
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="play-circle-outline" size={24} color="#2E4064" />
-          <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-            Course Videos
-          </Text>
-        </View>
-
-        <View style={styles.videoPlaceholder}>
-          <Ionicons name="videocam-outline" size={60} color="#9CA3AF" />
-          <Text style={[styles.placeholderText, { fontSize: isSmallScreen ? 14 : 16 }]}>
-            Course videos will be available here
-          </Text>
-          <Text style={[styles.placeholderSubtext, { fontSize: isSmallScreen ? 12 : 14 }]}>
-            Backend implementation pending
-          </Text>
-        </View>
-      </View>
-
-      {/* Study Materials Section */}
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="library-outline" size={24} color="#2E4064" />
-          <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-            Study Materials
-          </Text>
-        </View>
-
-        <View style={styles.studyMaterialsGrid}>
-          {/* eBooks */}
-          <TouchableOpacity style={styles.materialCard}>
-            <View style={[styles.materialIcon, { backgroundColor: "#E3F2FD" }]}>
-              <Ionicons name="book-outline" size={32} color="#1976D2" />
+              
             </View>
-            <Text style={[styles.materialTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
-              eBooks
-            </Text>
-            <Text style={[styles.materialCount, { fontSize: isSmallScreen ? 12 : 14 }]}>
-              2 Available
-            </Text>
-          </TouchableOpacity>
-
-          {/* Notes */}
-          <TouchableOpacity style={styles.materialCard}>
-            <View style={[styles.materialIcon, { backgroundColor: "#E8F5E8" }]}>
-              <Ionicons name="document-text-outline" size={32} color="#388E3C" />
-            </View>
-            <Text style={[styles.materialTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
-              Notes
-            </Text>
-            <Text style={[styles.materialCount, { fontSize: isSmallScreen ? 12 : 14 }]}>
-              2 Available
-            </Text>
-          </TouchableOpacity>
-
-          {/* Sample Question Set - Only for Core Curriculum */}
-          {isCoreCurriculum && (
-            <TouchableOpacity style={styles.materialCard}>
-              <View style={[styles.materialIcon, { backgroundColor: "#FFF3E0" }]}>
-                <Ionicons name="help-circle-outline" size={32} color="#F57C00" />
-              </View>
-              <Text style={[styles.materialTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                Sample Questions
-              </Text>
-              <Text style={[styles.materialCount, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                2 Sets Available
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Previous Year Questions - Only for Core Curriculum */}
-          {isCoreCurriculum && (
-            <TouchableOpacity style={styles.materialCard}>
-              <View style={[styles.materialIcon, { backgroundColor: "#FCE4EC" }]}>
-                <Ionicons name="archive-outline" size={32} color="#C2185B" />
-              </View>
-              <Text style={[styles.materialTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                Previous Year Questions
-              </Text>
-              <Text style={[styles.materialCount, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                Solved PYQs
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {!isCoreCurriculum && (
-          <View style={styles.limitedMaterialsNote}>
-            <Ionicons name="information-circle-outline" size={20} color="#9CA3AF" />
-            <Text style={[styles.noteText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-              Additional materials (Sample Questions & PYQs) are available only for Core Curriculum courses
-            </Text>
+            <Ionicons
+              name={isCoreCurriculum ? "school-outline" : "briefcase-outline"}
+              size={isSmallScreen ? 24 : 26}
+              color="black"
+            />
           </View>
-        )}
-      </View>
-
-      {/* Enrolled Students Section */}
-      <View style={styles.sectionCard}>
-        <View style={styles.sectionHeader}>
-          <Ionicons name="people-outline" size={24} color="#2E4064" />
-          <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-            Enrolled Students ({enrolledStudents.length})
-          </Text>
-        </View>
-
-        {/* Student Status Tabs */}
-        <View style={styles.studentTabContainer}>
-          <TouchableOpacity
-            style={[
-              styles.studentTab,
-              activeStudentTab === 'success' && styles.activeStudentTab
-            ]}
-            onPress={() => setActiveStudentTab('success')}
-          >
-            <Text style={[
-              styles.studentTabText,
-              activeStudentTab === 'success' && styles.activeStudentTabText,
-              { fontSize: isSmallScreen ? 14 : 16 }
-            ]}>
-              Enrolled ({enrolledStudents.filter(s => s.status === 'success').length})
-            </Text>
-          </TouchableOpacity>
           
-          <TouchableOpacity
-            style={[
-              styles.studentTab,
-              activeStudentTab === 'pending' && styles.activeStudentTab
-            ]}
-            onPress={() => setActiveStudentTab('pending')}
-          >
-            <Text style={[
-              styles.studentTabText,
-              activeStudentTab === 'pending' && styles.activeStudentTabText,
-              { fontSize: isSmallScreen ? 14 : 16 }
-            ]}>
-              Pending ({enrolledStudents.filter(s => s.status === 'pending').length})
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Students List */}
-        {studentsLoading ? (
-          <View style={styles.studentsContainer}>
-            <ActivityIndicator size="large" color="#2E4064" />
-            <Text style={[styles.loadingText, { fontSize: isSmallScreen ? 14 : 16 }]}>
-              Loading students...
+          {/* Course Logo and Name in a row */}
+          <View style={styles.courseNameRow}>
+            {course.course_logo && (
+              <View style={styles.courseLogoContainer}>
+                <Image
+                  source={{ uri: course.course_logo }}
+                  style={[styles.courseLogo, {
+                    height: "auto",
+                    aspectRatio: 1,
+                  }]}
+                  defaultSource={{ uri: 'https://via.placeholder.com/48x48/2E4064/FFFFFF?text=C' }}
+                  resizeMode="contain"
+                />
+              </View>
+            )}
+            <Text style={[styles.courseName, { 
+              fontSize: isSmallScreen ? 24 : isMediumScreen ? 26 : 28,
+              flex: 1,
+              marginBottom: 0
+            }]}>
+              {course.full_name}
             </Text>
           </View>
-        ) : (
-          <View style={styles.studentsList}>
-            {enrolledStudents
-              .filter(student => student.status === activeStudentTab)
-              .map((student, index) => (
-                <View key={student.id} style={[
-                  styles.studentCard,
-                  { 
-                    flexDirection: isSmallScreen ? 'column' : 'row',
-                    alignItems: isSmallScreen ? 'stretch' : 'center',
-                    minHeight: isSmallScreen ? 85 : 70,
-                    padding: isSmallScreen ? 12 : 14,
-                  }
-                ]}>
-                  <View style={[
-                    styles.studentInfo,
-                    { 
-                      marginRight: isSmallScreen ? 0 : 12,
-                      marginBottom: isSmallScreen ? 10 : 0,
+
+          <View style={styles.courseMetaInfo}>
+            {/* Instructor with Image */}
+            <View style={styles.instructorSection}>
+              {course.instructor_image && (
+                <View style={styles.instructorImageContainer}>
+                  <Image
+                    source={{ uri: course.instructor_image }}
+                    style={[styles.instructorImage, {
+                      width: isSmallScreen ? 42 : 48,
+                      height: isSmallScreen ? 42 : 48,
+                      borderRadius: isSmallScreen ? 21 : 24,
+                    }]}
+                    defaultSource={{ uri: `https://via.placeholder.com/48x48/10B981/FFFFFF?text=${course.instructor.charAt(0).toUpperCase()}` }}
+                  />
+                </View>
+              )}
+              <View style={styles.instructorInfo}>
+                <Text style={[styles.instructorLabel, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                  Instructor
+                </Text>
+                <Text style={[styles.instructorName, { fontSize: isSmallScreen ? 16 : 18 }]}>
+                  {course.instructor}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.metaRow}>
+              <Ionicons name="time-outline" size={16} color="black" />
+              <Text style={[styles.metaText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                Duration: {course.course_duration ? `${course.course_duration} months` : "Ongoing"}
+              </Text>
+            </View>
+
+          </View>
+
+          {/* Schedule Section - Moved outside metaRow for better layout */}
+          <View style={styles.scheduleContainer}>
+            <View style={styles.scheduleHeader}>
+              <View style={styles.metaRow}>
+                <Ionicons name="calendar-outline" size={16} color="black" />
+                <Text style={[styles.metaText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                  Schedule:
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.editButton} onPress={handleEditSchedule}>
+                <Ionicons name="pencil" size={14} color="#fff" />
+                <Text style={styles.editButtonText}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.scheduleList}>
+              {parseSchedule(course.class_schedule).map((schedule: any, index: number) => (
+                <View key={index} style={styles.scheduleItem}>
+                  <View style={styles.dayBadge}>
+                    <Text style={[styles.dayText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                      {schedule.day}
+                    </Text>
+                  </View>
+                  <Text style={[styles.timeText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                    {schedule.startTime} - {schedule.endTime}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        {/* Course Videos Section */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="play-circle-outline" size={24} color="#2E4064" />
+            <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+              Course Videos
+            </Text>
+          </View>
+
+          <View style={styles.videoPlaceholder}>
+            <Ionicons name="videocam-outline" size={60} color="#9CA3AF" />
+            <Text style={[styles.placeholderText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+              Course videos will be available here
+            </Text>
+            <Text style={[styles.placeholderSubtext, { fontSize: isSmallScreen ? 12 : 14 }]}>
+              Backend implementation pending
+            </Text>
+          </View>
+        </View>
+
+        {/* Study Materials Section */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="library-outline" size={24} color="#2E4064" />
+            <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+              Study Materials
+            </Text>
+          </View>
+
+          <View style={styles.studyMaterialsGrid}>
+            {/* eBooks */}
+            <TouchableOpacity 
+              style={styles.materialCard}
+              onPress={() => setCurrentView('ebooks')}
+            >
+              <View style={[styles.materialIcon, { backgroundColor: "#E3F2FD" }]}>
+                <Ionicons name="book-outline" size={32} color="#1976D2" />
+              </View>
+              <Text style={[styles.materialTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                eBooks
+              </Text>
+              <Text style={[styles.materialCount, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                2 Available
+              </Text>
+            </TouchableOpacity>
+
+            {/* Notes */}
+            <TouchableOpacity style={styles.materialCard}>
+              <View style={[styles.materialIcon, { backgroundColor: "#E8F5E8" }]}>
+                <Ionicons name="document-text-outline" size={32} color="#388E3C" />
+              </View>
+              <Text style={[styles.materialTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                Notes
+              </Text>
+              <Text style={[styles.materialCount, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                2 Available
+              </Text>
+            </TouchableOpacity>
+
+            {/* Sample Question Set - Only for Core Curriculum */}
+            {isCoreCurriculum && (
+              <TouchableOpacity style={styles.materialCard}>
+                <View style={[styles.materialIcon, { backgroundColor: "#FFF3E0" }]}>
+                  <Ionicons name="help-circle-outline" size={32} color="#F57C00" />
+                </View>
+                <Text style={[styles.materialTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                  Sample Questions
+                </Text>
+                <Text style={[styles.materialCount, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                  2 Sets Available
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Previous Year Questions - Only for Core Curriculum */}
+            {isCoreCurriculum && (
+              <TouchableOpacity style={styles.materialCard}>
+                <View style={[styles.materialIcon, { backgroundColor: "#FCE4EC" }]}>
+                  <Ionicons name="archive-outline" size={32} color="#C2185B" />
+                </View>
+                <Text style={[styles.materialTitle, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                  Previous Year Questions
+                </Text>
+                <Text style={[styles.materialCount, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                  Solved PYQs
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {!isCoreCurriculum && (
+            <View style={styles.limitedMaterialsNote}>
+              <Ionicons name="information-circle-outline" size={20} color="#9CA3AF" />
+              <Text style={[styles.noteText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                Additional materials (Sample Questions & PYQs) are available only for Core Curriculum courses
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Enrolled Students Section */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="people-outline" size={24} color="#2E4064" />
+            <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
+              Enrolled Students ({enrolledStudents.length})
+            </Text>
+          </View>
+
+          {/* Student Status Tabs */}
+          <View style={styles.studentTabContainer}>
+            <TouchableOpacity
+              style={[
+                styles.studentTab,
+                activeStudentTab === 'success' && styles.activeStudentTab
+              ]}
+              onPress={() => setActiveStudentTab('success')}
+            >
+              <Text style={[
+                styles.studentTabText,
+                activeStudentTab === 'success' && styles.activeStudentTabText,
+                { fontSize: isSmallScreen ? 14 : 16 }
+              ]}>
+                Enrolled ({enrolledStudents.filter(s => s.status === 'success').length})
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.studentTab,
+                activeStudentTab === 'pending' && styles.activeStudentTab
+              ]}
+              onPress={() => setActiveStudentTab('pending')}
+            >
+              <Text style={[
+                styles.studentTabText,
+                activeStudentTab === 'pending' && styles.activeStudentTabText,
+                { fontSize: isSmallScreen ? 14 : 16 }
+              ]}>
+                Pending ({enrolledStudents.filter(s => s.status === 'pending').length})
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Students List */}
+          {studentsLoading ? (
+            <View style={styles.studentsContainer}>
+              <ActivityIndicator size="large" color="#2E4064" />
+              <Text style={[styles.loadingText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                Loading students...
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.studentsList}>
+              {enrolledStudents
+                .filter(student => student.status === activeStudentTab)
+                .map((student, index) => (
+                  <View key={student.id} style={[
+                    styles.studentCard,
+                    {
+                      flexDirection: isSmallScreen ? 'column' : 'row',
+                      alignItems: isSmallScreen ? 'stretch' : 'center',
+                      minHeight: isSmallScreen ? 85 : 70,
+                      padding: isSmallScreen ? 12 : 14,
                     }
                   ]}>
-                    {/* Student Avatar or Image */}
                     <View style={[
-                      styles.studentAvatarContainer,
-                      { 
-                        width: isSmallScreen ? 36 : 42,
-                        height: isSmallScreen ? 36 : 42,
-                        borderRadius: isSmallScreen ? 18 : 21,
-                        marginRight: isSmallScreen ? 10 : 14,
+                      styles.studentInfo,
+                      {
+                        marginRight: isSmallScreen ? 0 : 12,
+                        marginBottom: isSmallScreen ? 10 : 0,
                       }
                     ]}>
-                      {student.user_image ? (
-                        <Image
-                          source={{ uri: student.user_image }}
-                          style={[
-                            styles.studentImage,
-                            { 
+                      {/* Student Avatar or Image */}
+                      <View style={[
+                        styles.studentAvatarContainer,
+                        {
+                          width: isSmallScreen ? 36 : 42,
+                          height: isSmallScreen ? 36 : 42,
+                          borderRadius: isSmallScreen ? 18 : 21,
+                          marginRight: isSmallScreen ? 10 : 14,
+                        }
+                      ]}>
+                        {student.user_image ? (
+                          <Image
+                            source={{ uri: student.user_image }}
+                            style={[
+                              styles.studentImage,
+                              {
+                                width: isSmallScreen ? 36 : 42,
+                                height: isSmallScreen ? 36 : 42,
+                                borderRadius: isSmallScreen ? 18 : 21,
+                              }
+                            ]}
+                            defaultSource={{ uri: 'https://via.placeholder.com/42x42/10B981/FFFFFF?text=' + student.name.charAt(0).toUpperCase() }}
+                          />
+                        ) : (
+                          <View style={[
+                            styles.studentAvatar,
+                            {
+                              backgroundColor: activeStudentTab === 'success' ? '#10B981' : '#F59E0B',
                               width: isSmallScreen ? 36 : 42,
                               height: isSmallScreen ? 36 : 42,
                               borderRadius: isSmallScreen ? 18 : 21,
                             }
-                          ]}
-                          defaultSource={{ uri: 'https://via.placeholder.com/42x42/10B981/FFFFFF?text=' + student.name.charAt(0).toUpperCase() }}
-                        />
-                      ) : (
-                        <View style={[
-                          styles.studentAvatar,
-                          { 
-                            backgroundColor: activeStudentTab === 'success' ? '#10B981' : '#F59E0B',
-                            width: isSmallScreen ? 36 : 42,
-                            height: isSmallScreen ? 36 : 42,
-                            borderRadius: isSmallScreen ? 18 : 21,
-                          }
-                        ]}>
-                          <Text style={[
-                            styles.studentInitial,
-                            { fontSize: isSmallScreen ? 14 : 16 }
                           ]}>
-                            {student.name.charAt(0).toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                    
-                    <View style={styles.studentDetails}>
-                      <Text style={[styles.studentName, { fontSize: isSmallScreen ? 13 : 15 }]}>
-                        {student.name}
-                      </Text>
-                      <Text style={[styles.studentEmail, { fontSize: isSmallScreen ? 11 : 13 }]}>
-                        {student.email}
-                      </Text>
-                      {student.phone_no && (
-                        <Text style={[styles.studentPhone, { fontSize: isSmallScreen ? 11 : 13 }]}>
-                          {student.phone_no}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
+                            <Text style={[
+                              styles.studentInitial,
+                              { fontSize: isSmallScreen ? 14 : 16 }
+                            ]}>
+                              {student.name.charAt(0).toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
 
-                  <View style={[
-                    styles.studentActions,
-                    { 
-                      flexDirection: isSmallScreen ? 'row' : 'column',
-                      alignItems: isSmallScreen ? 'flex-end' : 'center',
-                      gap: isSmallScreen ? 8 : 6,
-                    }
-                  ]}>
-                    {/* Status Badge */}
+                      <View style={styles.studentDetails}>
+                        <Text style={[styles.studentName, { fontSize: isSmallScreen ? 13 : 15 }]}>
+                          {student.name}
+                        </Text>
+                        <Text style={[styles.studentEmail, { fontSize: isSmallScreen ? 11 : 13 }]}>
+                          {student.email}
+                        </Text>
+                        {student.phone_no && (
+                          <Text style={[styles.studentPhone, { fontSize: isSmallScreen ? 11 : 13 }]}>
+                            {student.phone_no}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
                     <View style={[
-                      styles.studentStatus,
-                      { 
-                        backgroundColor: activeStudentTab === 'success' ? '#D1FAE5' : '#FEF3C7',
-                        minWidth: isSmallScreen ? 65 : 75,
-                        paddingHorizontal: isSmallScreen ? 8 : 10,
-                        paddingVertical: isSmallScreen ? 4 : 6,
+                      styles.studentActions,
+                      {
+                        flexDirection: isSmallScreen ? 'row' : 'column',
+                        alignItems: isSmallScreen ? 'flex-end' : 'center',
+                        gap: isSmallScreen ? 8 : 6,
                       }
                     ]}>
-                      <Text style={[
-                        styles.studentStatusText,
-                        { 
-                          color: activeStudentTab === 'success' ? '#065F46' : '#92400E',
-                          fontSize: isSmallScreen ? 11 : 13
+                      {/* Status Badge */}
+                      <View style={[
+                        styles.studentStatus,
+                        {
+                          backgroundColor: activeStudentTab === 'success' ? '#D1FAE5' : '#FEF3C7',
+                          minWidth: isSmallScreen ? 65 : 75,
+                          paddingHorizontal: isSmallScreen ? 8 : 10,
+                          paddingVertical: isSmallScreen ? 4 : 6,
                         }
                       ]}>
-                        {activeStudentTab === 'success' ? 'Enrolled' : 'Pending'}
-                      </Text>
-                    </View>
-
-                    {/* Approve Button for Pending Students */}
-                    {activeStudentTab === 'pending' && (
-                      <TouchableOpacity
-                        style={[
-                          styles.approveButton,
-                          { 
-                            paddingHorizontal: isSmallScreen ? 8 : 10,
-                            paddingVertical: isSmallScreen ? 4 : 6,
+                        <Text style={[
+                          styles.studentStatusText,
+                          {
+                            color: activeStudentTab === 'success' ? '#065F46' : '#92400E',
+                            fontSize: isSmallScreen ? 11 : 13
                           }
-                        ]}
-                        onPress={() => approveStudentEnrollment(student.id, student.name)}
-                      >
-                        <Ionicons name="checkmark" size={isSmallScreen ? 14 : 16} color="#fff" />
-                        <Text style={[
-                          styles.approveButtonText,
-                          { fontSize: isSmallScreen ? 11 : 13 }
                         ]}>
-                          Approve
+                          {activeStudentTab === 'success' ? 'Enrolled' : 'Pending'}
                         </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              ))
-            }
+                      </View>
 
-            {enrolledStudents.filter(student => student.status === activeStudentTab).length === 0 && (
-              <View style={styles.emptyStudentsContainer}>
-                <Ionicons 
-                  name={activeStudentTab === 'success' ? "people-outline" : "time-outline"} 
-                  size={48} 
-                  color="#9CA3AF" 
-                />
-                <Text style={[styles.emptyStudentsText, { fontSize: isSmallScreen ? 14 : 16 }]}>
-                  {activeStudentTab === 'success' 
-                    ? 'No enrolled students yet' 
-                    : 'No pending enrollments'
-                  }
-                </Text>
-                <Text style={[styles.emptyStudentsSubText, { fontSize: isSmallScreen ? 12 : 14 }]}>
-                  {activeStudentTab === 'success' 
-                    ? 'Students will appear here once they enroll and payments are approved' 
-                    : 'Pending enrollments will appear here'
-                  }
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-      </View>
-      
-      {/* Schedule Editing Modal */}
-      <Modal
-        visible={editingSchedule}
-        animationType="slide"
-        transparent
-        onRequestClose={cancelScheduleEdit}
-      >
-        <View style={scheduleStyles.modalOverlay}>
-          <View style={scheduleStyles.modalContent}>
-            {/* Header */}
-            <View style={scheduleStyles.header}>
-              <Text style={scheduleStyles.modalTitle}>Edit Schedule</Text>
-              <TouchableOpacity 
-                style={scheduleStyles.closeButton} 
-                onPress={cancelScheduleEdit}
-              >
-                <Text style={scheduleStyles.closeButtonText}>×</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Schedule List */}
-            <ScrollView style={scheduleStyles.scheduleContainer}>
-              {scheduleData.map((schedule, index) => (
-                <View key={index} style={scheduleStyles.scheduleItem}>
-                  {scheduleData.length > 1 && (
-                    <TouchableOpacity
-                      style={scheduleStyles.removeButton}
-                      onPress={() => removeSchedule(index)}
-                    >
-                      <Text style={scheduleStyles.removeButtonText}>×</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {/* Day Picker */}
-                  <View style={scheduleStyles.inputGroup}>
-                    <Text style={scheduleStyles.label}>Day</Text>
-                    <View style={scheduleStyles.dayDropdownWrapper}>
-                      <TouchableOpacity
-                        style={[
-                          scheduleStyles.dayButton,
-                          showDayPicker === index && scheduleStyles.dayButtonActive
-                        ]}
-                        onPress={() => setShowDayPicker(showDayPicker === index ? null : index)}
-                      >
-                        <Text style={scheduleStyles.dayText}>{schedule.day}</Text>
-                        <Text style={[
-                          scheduleStyles.dropdownArrow,
-                          showDayPicker === index && scheduleStyles.dropdownArrowRotated
-                        ]}>▼</Text>
-                      </TouchableOpacity>
-
-                      {showDayPicker === index && (
-                        <View style={scheduleStyles.dayDropdownContainer}>
-                          {daysOfWeek.map((day) => (
-                            <TouchableOpacity
-                              key={day}
-                              style={[
-                                scheduleStyles.dayDropdownItem,
-                                schedule.day === day && scheduleStyles.selectedDayDropdownItem,
-                                day === daysOfWeek[daysOfWeek.length - 1] && scheduleStyles.lastDayDropdownItem
-                              ]}
-                              onPress={() => {
-                                updateSchedule(index, "day", day);
-                                setShowDayPicker(null);
-                              }}
-                            >
-                              <Text style={[
-                                scheduleStyles.dayDropdownItemText,
-                                schedule.day === day && scheduleStyles.selectedDayDropdownItemText
-                              ]}>
-                                {day}
-                              </Text>
-                              {schedule.day === day && (
-                                <Text style={scheduleStyles.checkmark}>✓</Text>
-                              )}
-                            </TouchableOpacity>
-                          ))}
-                        </View>
+                      {/* Approve Button for Pending Students */}
+                      {activeStudentTab === 'pending' && (
+                        <TouchableOpacity
+                          style={[
+                            styles.approveButton,
+                            {
+                              paddingHorizontal: isSmallScreen ? 8 : 10,
+                              paddingVertical: isSmallScreen ? 4 : 6,
+                            }
+                          ]}
+                          onPress={() => approveStudentEnrollment(student.id, student.name)}
+                        >
+                          <Ionicons name="checkmark" size={isSmallScreen ? 14 : 16} color="#fff" />
+                          <Text style={[
+                            styles.approveButtonText,
+                            { fontSize: isSmallScreen ? 11 : 13 }
+                          ]}>
+                            Approve
+                          </Text>
+                        </TouchableOpacity>
                       )}
                     </View>
                   </View>
+                ))
+              }
 
-                  {/* Time Inputs */}
-                  <View style={scheduleStyles.timeRow}>
-                    <View style={scheduleStyles.timeInput}>
-                      <Text style={scheduleStyles.label}>Start Time</Text>
+              {enrolledStudents.filter(student => student.status === activeStudentTab).length === 0 && (
+                <View style={styles.emptyStudentsContainer}>
+                  <Ionicons
+                    name={activeStudentTab === 'success' ? "people-outline" : "time-outline"}
+                    size={48}
+                    color="#9CA3AF"
+                  />
+                  <Text style={[styles.emptyStudentsText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                    {activeStudentTab === 'success'
+                      ? 'No enrolled students yet'
+                      : 'No pending enrollments'
+                    }
+                  </Text>
+                  <Text style={[styles.emptyStudentsSubText, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                    {activeStudentTab === 'success'
+                      ? 'Students will appear here once they enroll and payments are approved'
+                      : 'Pending enrollments will appear here'
+                    }
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Schedule Editing Modal */}
+        <Modal
+          visible={editingSchedule}
+          animationType="slide"
+          transparent
+          onRequestClose={cancelScheduleEdit}
+        >
+          <View style={scheduleStyles.modalOverlay}>
+            <View style={scheduleStyles.modalContent}>
+              {/* Header */}
+              <View style={scheduleStyles.header}>
+                <Text style={scheduleStyles.modalTitle}>Edit Schedule</Text>
+                <TouchableOpacity
+                  style={scheduleStyles.closeButton}
+                  onPress={cancelScheduleEdit}
+                >
+                  <Text style={scheduleStyles.closeButtonText}>×</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Schedule List */}
+              <ScrollView
+                style={scheduleStyles.scheduleContainer}
+                contentContainerStyle={{ paddingBottom: 20 }}
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+              >
+                {scheduleData.map((schedule, index) => (
+                  <View key={index} style={scheduleStyles.scheduleItem}>
+                    {scheduleData.length > 1 && (
                       <TouchableOpacity
-                        style={scheduleStyles.timeButton}
-                        onPress={() => {
-                          // For simplicity, let's use a prompt for time input
-                          Alert.prompt(
-                            "Start Time",
-                            "Enter start time (HH:MM)",
-                            (text) => {
-                              if (text && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(text)) {
-                                updateSchedule(index, "startTime", text);
-                              } else {
-                                Alert.alert("Invalid format", "Please use HH:MM format (24-hour)");
-                              }
-                            },
-                            "plain-text",
-                            schedule.startTime
-                          );
-                        }}
+                        style={scheduleStyles.removeButton}
+                        onPress={() => removeSchedule(index)}
                       >
-                        <Text style={scheduleStyles.timeText}>{schedule.startTime}</Text>
+                        <Text style={scheduleStyles.removeButtonText}>×</Text>
                       </TouchableOpacity>
+                    )}
+
+                    {/* Day Picker */}
+                    <View style={scheduleStyles.inputGroup}>
+                      <Text style={scheduleStyles.label}>Day</Text>
+                      <View style={scheduleStyles.dayDropdownWrapper}>
+                        <TouchableOpacity
+                          style={[
+                            scheduleStyles.dayButton,
+                            showDayPicker === index && scheduleStyles.dayButtonActive
+                          ]}
+                          onPress={() => setShowDayPicker(showDayPicker === index ? null : index)}
+                        >
+                          <Text style={scheduleStyles.dayText}>{schedule.day}</Text>
+                          <Text style={[
+                            scheduleStyles.dropdownArrow,
+                            showDayPicker === index && scheduleStyles.dropdownArrowRotated
+                          ]}>▼</Text>
+                        </TouchableOpacity>
+
+                        {showDayPicker === index && (
+                          <ScrollView
+                            style={scheduleStyles.dayDropdownContainer}
+                            nestedScrollEnabled={true}
+                            showsVerticalScrollIndicator={true}
+                          >
+                            {daysOfWeek.map((day) => (
+                              <TouchableOpacity
+                                key={day}
+                                style={[
+                                  scheduleStyles.dayDropdownItem,
+                                  schedule.day === day && scheduleStyles.selectedDayDropdownItem,
+                                  day === daysOfWeek[daysOfWeek.length - 1] && scheduleStyles.lastDayDropdownItem
+                                ]}
+                                onPress={() => {
+                                  updateSchedule(index, "day", day);
+                                  setShowDayPicker(null);
+                                }}
+                              >
+                                <Text style={[
+                                  scheduleStyles.dayDropdownItemText,
+                                  schedule.day === day && scheduleStyles.selectedDayDropdownItemText
+                                ]}>
+                                  {day}
+                                </Text>
+                                {schedule.day === day && (
+                                  <Text style={scheduleStyles.checkmark}>✓</Text>
+                                )}
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        )}
+                      </View>
                     </View>
 
-                    <View style={scheduleStyles.timeInput}>
-                      <Text style={scheduleStyles.label}>End Time</Text>
-                      <TouchableOpacity
-                        style={scheduleStyles.timeButton}
-                        onPress={() => {
-                          Alert.prompt(
-                            "End Time",
-                            "Enter end time (HH:MM)",
-                            (text) => {
-                              if (text && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(text)) {
-                                updateSchedule(index, "endTime", text);
-                              } else {
-                                Alert.alert("Invalid format", "Please use HH:MM format (24-hour)");
-                              }
-                            },
-                            "plain-text",
-                            schedule.endTime
-                          );
-                        }}
-                      >
-                        <Text style={scheduleStyles.timeText}>{schedule.endTime}</Text>
-                      </TouchableOpacity>
+                    {/* Time Inputs */}
+                    <View style={scheduleStyles.timeRow}>
+                      <View style={scheduleStyles.timeInput}>
+                        <Text style={scheduleStyles.label}>Start Time</Text>
+                        <TouchableOpacity
+                          style={scheduleStyles.timeButton}
+                          onPress={() => {
+                            // For simplicity, let's use a prompt for time input
+                            Alert.prompt(
+                              "Start Time",
+                              "Enter start time (HH:MM)",
+                              (text) => {
+                                if (text && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(text)) {
+                                  updateSchedule(index, "startTime", text);
+                                } else {
+                                  Alert.alert("Invalid format", "Please use HH:MM format (24-hour)");
+                                }
+                              },
+                              "plain-text",
+                              schedule.startTime
+                            );
+                          }}
+                        >
+                          <Text style={scheduleStyles.timeText}>{schedule.startTime}</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={scheduleStyles.timeInput}>
+                        <Text style={scheduleStyles.label}>End Time</Text>
+                        <TouchableOpacity
+                          style={scheduleStyles.timeButton}
+                          onPress={() => {
+                            Alert.prompt(
+                              "End Time",
+                              "Enter end time (HH:MM)",
+                              (text) => {
+                                if (text && /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(text)) {
+                                  updateSchedule(index, "endTime", text);
+                                } else {
+                                  Alert.alert("Invalid format", "Please use HH:MM format (24-hour)");
+                                }
+                              },
+                              "plain-text",
+                              schedule.endTime
+                            );
+                          }}
+                        >
+                          <Text style={scheduleStyles.timeText}>{schedule.endTime}</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   </View>
-                </View>
-              ))}
+                ))}
 
-              {/* Add Schedule Button */}
-              <TouchableOpacity style={scheduleStyles.addButton} onPress={addSchedule}>
-                <Text style={scheduleStyles.addButtonText}>+ Add Schedule</Text>
-              </TouchableOpacity>
-            </ScrollView>
+                {/* Add Schedule Button */}
+                <TouchableOpacity style={scheduleStyles.addButton} onPress={addSchedule}>
+                  <Text style={scheduleStyles.addButtonText}>+ Add Schedule</Text>
+                </TouchableOpacity>
+              </ScrollView>
 
-            {/* Action Buttons */}
-            <View style={scheduleStyles.actionButtons}>
-              <TouchableOpacity 
-                style={scheduleStyles.cancelButton} 
-                onPress={cancelScheduleEdit}
-              >
-                <Text style={scheduleStyles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[scheduleStyles.saveButton, savingSchedule && scheduleStyles.disabledButton]} 
-                onPress={saveSchedule}
-                disabled={savingSchedule}
-              >
-                <Text style={scheduleStyles.saveButtonText}>
-                  {savingSchedule ? "Saving..." : "Save Changes"}
-                </Text>
-              </TouchableOpacity>
+              {/* Action Buttons */}
+              <View style={scheduleStyles.actionButtons}>
+                <TouchableOpacity
+                  style={scheduleStyles.cancelButton}
+                  onPress={cancelScheduleEdit}
+                >
+                  <Text style={scheduleStyles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[scheduleStyles.saveButton, savingSchedule && scheduleStyles.disabledButton]}
+                  onPress={saveSchedule}
+                  disabled={savingSchedule}
+                >
+                  <Text style={scheduleStyles.saveButtonText}>
+                    {savingSchedule ? "Saving..." : "Save Changes"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-    </ScrollView>
+        </Modal>
+      </ScrollView>
     </>
   );
 };
@@ -1102,6 +1207,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#111827",
   },
   contentContainer: {
+    paddingTop: 80,
     paddingBottom: 40,
   },
   loadingContainer: {
@@ -1140,15 +1246,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   header: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 16,
-    paddingTop: 50,
+    paddingTop: 20,
     backgroundColor: "#1F2937",
     borderBottomWidth: 1,
     borderBottomColor: "#374151",
+    zIndex: 1000,
   },
   backButtonHeader: {
     padding: 8,
@@ -1180,7 +1291,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
-    zIndex: 1000,
+    zIndex: 1001,
   },
   dropdownItem: {
     flexDirection: "row",
@@ -1240,6 +1351,12 @@ const styles = StyleSheet.create({
     color: "black",
     marginBottom: 16,
     lineHeight: 32,
+  },
+  courseNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
   },
   courseMetaInfo: {
     gap: 8,
@@ -1394,7 +1511,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     flex: 1,
   },
-  
+
   // Student-related styles
   studentsContainer: {
     padding: 16,
@@ -1548,6 +1665,65 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     maxWidth: 300,
   },
+  // Course header styles for logo and instructor image
+  courseHeaderLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  courseLogoContainer: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    alignSelf: "stretch",
+    justifyContent: "center",
+    minWidth: 50,
+    maxWidth: 70,
+  },
+  courseLogo: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "black",
+  },
+  instructorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  instructorSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.05)",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 12,
+  },
+  instructorInfo: {
+    flex: 1,
+  },
+  instructorLabel: {
+    color: "rgba(0, 0, 0, 0.6)",
+    fontWeight: "500",
+    marginBottom: 2,
+  },
+  instructorName: {
+    color: "black",
+    fontWeight: "bold",
+  },
+  instructorImageContainer: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  instructorImage: {
+    borderWidth: 1,
+    borderColor: "black",
+  },
 });
 
 // Schedule editing styles
@@ -1565,6 +1741,7 @@ const scheduleStyles = StyleSheet.create({
     backgroundColor: "#1F2937",
     borderRadius: 20,
     overflow: "hidden",
+    flex: 1,
   },
   header: {
     flexDirection: "row",
@@ -1594,8 +1771,10 @@ const scheduleStyles = StyleSheet.create({
     fontWeight: "bold",
   },
   scheduleContainer: {
-    maxHeight: 400,
+    flex: 1,
     padding: 20,
+    paddingBottom: 0,
+    overflow: "visible",
   },
   scheduleItem: {
     backgroundColor: "#374151",
@@ -1603,6 +1782,7 @@ const scheduleStyles = StyleSheet.create({
     padding: 16,
     marginBottom: 16,
     position: "relative",
+    overflow: "visible",
   },
   removeButton: {
     position: "absolute",
@@ -1623,6 +1803,7 @@ const scheduleStyles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: 16,
+    overflow: "visible",
   },
   label: {
     fontSize: 14,
@@ -1632,7 +1813,7 @@ const scheduleStyles = StyleSheet.create({
   },
   dayDropdownWrapper: {
     position: "relative",
-    zIndex: 300,
+    overflow: "visible",
   },
   dayButton: {
     backgroundColor: "#4B5563",
@@ -1671,8 +1852,13 @@ const scheduleStyles = StyleSheet.create({
     marginTop: 4,
     borderWidth: 1,
     borderColor: "#6B7280",
-    zIndex: 301,
-    elevation: 8,
+    zIndex: 999999,
+    elevation: 9999,
+    maxHeight: 200,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   dayDropdownItem: {
     flexDirection: "row",

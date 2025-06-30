@@ -141,18 +141,55 @@ class AuthService {
   // Logout user and clear onboarding status
   async logout(): Promise<void> {
     try {
-      // Sign out from Supabase
-      await supabase.auth.signOut();
+      // Check if there's an active session before attempting to sign out
+      const { data: sessionData } = await supabase.auth.getSession();
       
-      // Clear cached user data
+      if (sessionData.session) {
+        // Only attempt to sign out if there's an active session
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.warn('Supabase sign out error (continuing with cleanup):', error);
+        }
+      } else {
+        console.log('No active session found, skipping Supabase sign out');
+      }
+      
+      // Always clear cached user data regardless of Supabase sign out result
       this.currentUser = null;
       this.currentSession = null;
       
       // Clear onboarding status so user sees onboarding again on next login
       await AsyncStorage.removeItem('hasSeenOnboarding');
+      
+      console.log('Logout completed successfully');
     } catch (error) {
       console.error('Error during logout:', error);
+      
+      // Even if there's an error, still clear local data
+      this.currentUser = null;
+      this.currentSession = null;
+      
+      try {
+        await AsyncStorage.removeItem('hasSeenOnboarding');
+      } catch (storageError) {
+        console.error('Error clearing onboarding status:', storageError);
+      }
+      
       throw error;
+    }
+  }
+
+  // Safe logout that doesn't throw errors (for UI components)
+  async safeLogout(): Promise<boolean> {
+    try {
+      await this.logout();
+      return true;
+    } catch (error) {
+      console.error('Safe logout error:', error);
+      // Still clear local data even if Supabase fails
+      this.currentUser = null;
+      this.currentSession = null;
+      return false;
     }
   }
 
