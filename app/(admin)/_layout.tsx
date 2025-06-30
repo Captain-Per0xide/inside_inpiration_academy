@@ -10,8 +10,8 @@ import StudentsIcon from "@/components/icons/StudentsIcon";
 import TeacherIcon from "@/components/icons/TeacherIcon";
 import TestSeriesIcon from "@/components/icons/TestSeriesIcon";
 import { supabase } from "@/lib/supabase";
+import { getCurrentDate, getCurrentISOString } from "@/utils/testDate";
 import { authService } from "@/services/authService";
-import { getCurrentDate } from "@/utils/testDate";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerContentComponentProps, DrawerContentScrollView, DrawerItemList } from "@react-navigation/drawer";
 import { router } from "expo-router";
@@ -342,7 +342,8 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await authService.logout();
+              const { error } = await supabase.auth.signOut();
+              if (error) throw error;
               router.replace('/(auth)');
             } catch (error) {
               Alert.alert('Error', 'Failed to logout');

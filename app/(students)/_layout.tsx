@@ -74,7 +74,8 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await authService.logout();
+              const { error } = await supabase.auth.signOut();
+              if (error) throw error;
               router.replace('/(auth)');
             } catch (error) {
               Alert.alert('Error', 'Failed to logout');

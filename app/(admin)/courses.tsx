@@ -1,7 +1,7 @@
 import AddCoursesModal from '@/components/add-courses';
-import CourseDetailsPage from '@/components/course-details';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -40,7 +40,6 @@ const Courses = () => {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [screenData, setScreenData] = useState(Dimensions.get('window'));
-    const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
 
     // Helper functions for course type-based fee rendering
     const getCourseFee = useCallback((course: Course) => {
@@ -239,7 +238,10 @@ const Courses = () => {
                     
                     <TouchableOpacity 
                         style={styles.viewButton}
-                        onPress={() => setSelectedCourseId(item.id)}
+                        onPress={() => router.push({
+                            pathname: '/course-details',
+                            params: { courseId: item.id }
+                        })}
                     >
                         <Text style={[
                             styles.viewButtonText,
@@ -307,16 +309,6 @@ const Courses = () => {
     }
 
     const isSmallScreen = screenData.width < 600;
-
-    // If a course is selected, show the course details page
-    if (selectedCourseId) {
-        return (
-            <CourseDetailsPage 
-                courseId={selectedCourseId} 
-                onBack={() => setSelectedCourseId(null)}
-            />
-        );
-    }
 
     return (
         <View style={styles.container}>
