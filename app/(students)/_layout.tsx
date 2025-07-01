@@ -222,6 +222,9 @@ export default function StudentsLayout() {
           headerShown: true,
           headerTitle: 'Inside Inspiration Academy',
           headerTitleAlign: 'center',
+          headerStyle: {
+            backgroundColor: '#29395A',
+          },
           drawerStyle: {
             backgroundColor: '#111827',
             width: '75%',
