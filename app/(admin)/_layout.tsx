@@ -494,6 +494,9 @@ export default function AdminLayout() {
           headerShown: true,
           headerTitle: 'Inside Inspiration Academy',
           headerTitleAlign: 'center',
+          headerStyle: {
+            backgroundColor: '#29395A',
+          },
           drawerStyle: {
             backgroundColor: '#f4f4f4',
             width: '75%',

@@ -41,17 +41,28 @@ interface Course {
     notes?: any;
     sample_questions?: any;
     previous_year_questions?: any;
+    scheduled_classes?: any;
+}
+
+interface ScheduledClass {
+    id: string;
+    topic: string;
+    status: 'scheduled' | 'live' | 'completed' | 'cancelled';
+    createdAt: string;
+    createdBy: string;
+    meetingLink: string;
+    scheduledDateTime: string;
 }
 
 interface LiveClass {
     id: string;
     title: string;
-    description: string;
+    description?: string;
     scheduled_date: string;
     scheduled_time: string;
-    duration: number;
+    duration?: number;
     meet_link?: string;
-    status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
+    status: 'scheduled' | 'live' | 'ongoing' | 'completed' | 'cancelled';
 }
 
 interface StudyMaterial {
@@ -115,76 +126,58 @@ const BatchDetailsScreen = () => {
 
             setCourse(courseData);
 
-            // Fetch upcoming live classes (mock data for now)
-            const mockLiveClasses: LiveClass[] = [
-                {
-                    id: '1',
-                    title: 'Introduction to Network Security',
-                    description: 'Understanding the fundamentals of network security and common threats',
-                    scheduled_date: '2025-07-02',
-                    scheduled_time: '19:00',
-                    duration: 90,
-                    meet_link: 'https://meet.google.com/abc-def-ghi',
-                    status: 'scheduled'
-                },
-                {
-                    id: '2',
-                    title: 'Hands-on NMAP Scanning',
-                    description: 'Practical session on using NMAP for network reconnaissance',
-                    scheduled_date: '2025-07-05',
-                    scheduled_time: '19:00',
-                    duration: 120,
-                    meet_link: 'https://meet.google.com/jkl-mno-pqr',
-                    status: 'scheduled'
-                },
-                {
-                    id: '3',
-                    title: 'Vulnerability Assessment Techniques',
-                    description: 'Learning to identify and assess security vulnerabilities',
-                    scheduled_date: '2025-07-08',
-                    scheduled_time: '19:00',
-                    duration: 90,
-                    status: 'scheduled'
-                }
-            ];
+            // Parse scheduled classes from course data
+            const scheduledClasses: LiveClass[] = [];
+            
+            if (courseData.scheduled_classes) {
+                const classes = Array.isArray(courseData.scheduled_classes) ? courseData.scheduled_classes : [];
+                classes.forEach((scheduledClass: any) => {
+                    // Only include classes that should be visible in Live Classes tab
+                    if (isClassVisibleInLiveTab(scheduledClass.scheduledDateTime)) {
+                        const scheduledDateTime = new Date(scheduledClass.scheduledDateTime);
+                        const scheduledDate = scheduledDateTime.toISOString().split('T')[0];
+                        const scheduledTime = scheduledDateTime.toTimeString().split(' ')[0].substring(0, 5);
+                        
+                        scheduledClasses.push({
+                            id: scheduledClass.id,
+                            title: scheduledClass.topic,
+                            description: `Scheduled class on ${scheduledClass.topic}`,
+                            scheduled_date: scheduledDate,
+                            scheduled_time: scheduledTime,
+                            duration: 90, // Default duration, you can add this to the database schema if needed
+                            meet_link: scheduledClass.meetingLink,
+                            status: scheduledClass.status
+                        });
+                    }
+                });
+            }
 
-            setLiveClasses(mockLiveClasses);
+            setLiveClasses(scheduledClasses);
 
-            // Fetch recorded classes (mock data for now)
-            const mockRecordedClasses: LiveClass[] = [
-                {
-                    id: '4',
-                    title: 'Introduction to Cybersecurity - Recorded',
-                    description: 'Recorded session covering the basics of cybersecurity principles',
-                    scheduled_date: '2025-06-25',
-                    scheduled_time: '19:00',
-                    duration: 85,
-                    meet_link: 'https://youtube.com/watch?v=abc123',
-                    status: 'completed'
-                },
-                {
-                    id: '5',
-                    title: 'Password Security Best Practices - Recorded',
-                    description: 'Deep dive into password security and authentication methods',
-                    scheduled_date: '2025-06-20',
-                    scheduled_time: '19:00',
-                    duration: 95,
-                    meet_link: 'https://youtube.com/watch?v=def456',
-                    status: 'completed'
-                },
-                {
-                    id: '6',
-                    title: 'Network Protocols Overview - Recorded',
-                    description: 'Understanding fundamental network protocols and their security implications',
-                    scheduled_date: '2025-06-15',
-                    scheduled_time: '19:00',
-                    duration: 110,
-                    meet_link: 'https://youtube.com/watch?v=ghi789',
-                    status: 'completed'
-                }
-            ];
-
-            setRecordedClasses(mockRecordedClasses);
+            // Filter completed classes as recorded classes (no time limit for recorded classes)
+            const allCompletedClasses: LiveClass[] = [];
+            if (courseData.scheduled_classes) {
+                const classes = Array.isArray(courseData.scheduled_classes) ? courseData.scheduled_classes : [];
+                classes.forEach((scheduledClass: any) => {
+                    if (scheduledClass.status === 'completed') {
+                        const scheduledDateTime = new Date(scheduledClass.scheduledDateTime);
+                        const scheduledDate = scheduledDateTime.toISOString().split('T')[0];
+                        const scheduledTime = scheduledDateTime.toTimeString().split(' ')[0].substring(0, 5);
+                        
+                        allCompletedClasses.push({
+                            id: scheduledClass.id,
+                            title: scheduledClass.topic,
+                            description: `Recorded class on ${scheduledClass.topic}`,
+                            scheduled_date: scheduledDate,
+                            scheduled_time: scheduledTime,
+                            duration: 90,
+                            meet_link: scheduledClass.meetingLink,
+                            status: scheduledClass.status
+                        });
+                    }
+                });
+            }
+            setRecordedClasses(allCompletedClasses);
 
             // Parse study materials from course JSONB data
             const materials: StudyMaterial[] = [];
@@ -289,6 +282,20 @@ const BatchDetailsScreen = () => {
         router.back();
     };
 
+    // Helper function to check if a class should be shown in Live Classes tab
+    const isClassVisibleInLiveTab = (scheduledDateTime: string): boolean => {
+        const currentTime = new Date();
+        const classTime = new Date(scheduledDateTime);
+        const oneDayInMs = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+        const timeDifference = currentTime.getTime() - classTime.getTime();
+        
+        // Show classes that are:
+        // - Upcoming (negative timeDifference)
+        // - Currently happening
+        // - Completed within the last 24 hours (positive timeDifference <= oneDayInMs)
+        return timeDifference <= oneDayInMs;
+    };
+
     const openMeetLink = (meetLink: string) => {
         Linking.openURL(meetLink).catch(err => {
             console.error('Failed to open meet link:', err);
@@ -326,6 +333,7 @@ const BatchDetailsScreen = () => {
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'scheduled': return '#3B82F6';
+            case 'live': return '#10B981';
             case 'ongoing': return '#10B981';
             case 'completed': return '#6B7280';
             case 'cancelled': return '#EF4444';
@@ -336,6 +344,7 @@ const BatchDetailsScreen = () => {
     const getStatusIcon = (status: string) => {
         switch (status) {
             case 'scheduled': return 'calendar-outline';
+            case 'live': return 'radio-outline';
             case 'ongoing': return 'radio-outline';
             case 'completed': return 'checkmark-circle-outline';
             case 'cancelled': return 'close-circle-outline';
@@ -421,18 +430,49 @@ const BatchDetailsScreen = () => {
                     <View style={styles.infoRow}>
                         <Ionicons name="time-outline" size={16} color="#6B7280" />
                         <Text style={styles.infoText}>
-                            {formatTime(item.scheduled_time)} ({item.duration} min)
+                            {formatTime(item.scheduled_time)} {item.duration && `(${item.duration} min)`}
                         </Text>
                     </View>
                 </View>
 
-                {item.meet_link && item.status === 'scheduled' && (
+                {/* Render different buttons based on class status */}
+                {item.status === 'live' && item.meet_link && (
                     <TouchableOpacity
-                        style={styles.joinButton}
+                        style={[styles.joinButton, { backgroundColor: '#10B981' }]}
                         onPress={() => openMeetLink(item.meet_link!)}
                     >
                         <Ionicons name="videocam-outline" size={16} color="white" />
                         <Text style={styles.joinButtonText}>Join Class</Text>
+                    </TouchableOpacity>
+                )}
+                
+                {item.status === 'scheduled' && (
+                    <TouchableOpacity
+                        style={[styles.joinButton, { backgroundColor: '#6B7280' }]}
+                        disabled={true}
+                    >
+                        <Ionicons name="calendar-outline" size={16} color="white" />
+                        <Text style={styles.joinButtonText}>Scheduled</Text>
+                    </TouchableOpacity>
+                )}
+
+                {item.status === 'completed' && item.meet_link && (
+                    <TouchableOpacity
+                        style={[styles.joinButton, { backgroundColor: '#8B5CF6' }]}
+                        onPress={() => openMeetLink(item.meet_link!)}
+                    >
+                        <Ionicons name="play-circle-outline" size={16} color="white" />
+                        <Text style={styles.joinButtonText}>Watch Recording</Text>
+                    </TouchableOpacity>
+                )}
+
+                {item.status === 'cancelled' && (
+                    <TouchableOpacity
+                        style={[styles.joinButton, { backgroundColor: '#EF4444' }]}
+                        disabled={true}
+                    >
+                        <Ionicons name="close-circle-outline" size={16} color="white" />
+                        <Text style={styles.joinButtonText}>Cancelled</Text>
                     </TouchableOpacity>
                 )}
             </View>

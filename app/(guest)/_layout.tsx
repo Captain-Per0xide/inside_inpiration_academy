@@ -1,4 +1,5 @@
 import CourseIcon from "@/components/icons/CourseIcon";
+import TeacherIcon from "@/components/icons/TeacherIcon";
 import { supabase } from "@/lib/supabase";
 import { authService } from "@/services/authService";
 import { Ionicons } from "@expo/vector-icons";
@@ -158,16 +159,16 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           showsVerticalScrollIndicator={false}
         >
           <DrawerItemList {...props} />
-          <View style={{ height: 40 }} />
+          
+          {/* Push content to bottom */}
+          <View style={{ flex: 1 }} />
 
           {/* Guest Actions Section */}
           <View
             style={{
               padding: 20,
-              borderTopWidth: 1,
               backgroundColor: "#111827",
-              borderRadius: 8,
-              marginHorizontal: 10,
+              marginTop: 'auto',
             }}
           >
             {isLoggedIn ? (
@@ -338,7 +339,7 @@ export default function GuestLayout() {
           headerTitle: "Inside Inspiration Academy",
           headerTitleAlign: "center",
           headerStyle: {
-            backgroundColor: "#29395A",
+          backgroundColor: "#29395A",
           },
           headerTintColor: "#fff",
           drawerStyle: {
@@ -372,6 +373,14 @@ export default function GuestLayout() {
             title: "Available Courses",
             drawerLabel: "Browse Courses",
             drawerIcon: () => <CourseIcon stroke="#fff" />,
+          }}
+        />
+        <Drawer.Screen
+          name="appoint-teacher"
+          options={{
+            title: "Apply for Teacher",
+            drawerLabel: "Apply for Teacher",
+            drawerIcon: () => <TeacherIcon fill="white" />,
           }}
         />
         <Drawer.Screen
