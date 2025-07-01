@@ -254,16 +254,16 @@ const StudentsDashboard = () => {
         if (width < 400) {
             // Very small phones (iPhone SE, etc.)
             return { numColumns: 1, cardWidth: width - 40, cardPadding: 12 };
-        } else if (width < 600) {
-            // Small phones (most mobile devices)
+        } else if (width < 650) {
+            // Small to medium phones (most mobile devices including 720px width)
             return { numColumns: 1, cardWidth: width - 40, cardPadding: 16 };
-        } else if (width < 800) {
+        } else if (width < 900) {
             // Large phones/small tablets (landscape phones, iPad mini)
             return { numColumns: 2, cardWidth: (width - 60) / 2, cardPadding: 16 };
-        } else if (width < 1000) {
+        } else if (width < 1200) {
             // Tablets
             return { numColumns: 2, cardWidth: (width - 80) / 2, cardPadding: 20 };
-        } else if (width < 1400) {
+        } else if (width < 1600) {
             // Large tablets/small desktops
             return { numColumns: 3, cardWidth: (width - 100) / 3, cardPadding: 20 };
         } else {
@@ -276,8 +276,8 @@ const StudentsDashboard = () => {
 
     const renderCourseCard = ({ item }: { item: Course }) => {
         const isVerySmallScreen = screenData.width < 400;
-        const isSmallScreen = screenData.width < 600;
-        const isMediumScreen = screenData.width < 800;
+        const isSmallScreen = screenData.width < 650; // Updated breakpoint to include 720px
+        const isMediumScreen = screenData.width < 900; // Updated breakpoint
         const hasPendingPayment = pendingPayments.has(item.id);
 
         // Responsive sizing based on screen width
@@ -530,7 +530,10 @@ const StudentsDashboard = () => {
                         numColumns={numColumns}
                         key={numColumns}
                         columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
-                        contentContainerStyle={styles.coursesListContainer}
+                        contentContainerStyle={[
+                            styles.coursesListContainer,
+                            numColumns === 1 && { alignItems: 'center' }
+                        ]}
                         scrollEnabled={false}
                         showsVerticalScrollIndicator={false}
                     />
@@ -657,7 +660,8 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 4,
-        maxWidth: 400,
+        maxWidth: '100%',
+        alignSelf: 'stretch',
     },
     cardHeader: {
         flexDirection: 'row',
