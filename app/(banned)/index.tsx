@@ -85,7 +85,7 @@ export default function BannedPage() {
                 require('../../assets/sounds/sad-meow-song.mp3'), // Replace with your actual sound file
                 {
                     isLooping: true,
-                    volume: 0.3, // Lower volume so it doesn't overpower
+                    volume: 0.4, // Lower volume so it doesn't overpower
                     shouldPlay: true,
                 }
             );
@@ -381,7 +381,7 @@ export default function BannedPage() {
             {/* Logout button */}
             <View style={styles.footer}>
                 <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                    <Ionicons name="log-out-outline" size={20} color="#DC2626" />
+                    <Ionicons name="log-out-outline" size={20} color="white" />
                     <Text style={styles.logoutText}>Logout</Text>
                 </TouchableOpacity>
             </View>
