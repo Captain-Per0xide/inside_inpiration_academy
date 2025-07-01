@@ -298,7 +298,6 @@ const TeacherManagement: React.FC = () => {
     const renderTeacherDetailModal = () => (
         <Modal
             animationType="slide"
-            transparent={true}
             visible={modalVisible}
             onRequestClose={closeModal}
             presentationStyle="pageSheet"
@@ -472,7 +471,6 @@ const TeacherManagement: React.FC = () => {
     const renderRequestedTeacherDetailModal = () => (
         <Modal
             animationType="slide"
-            transparent={true}
             visible={requestModalVisible}
             onRequestClose={() => setRequestModalVisible(false)}
             presentationStyle="pageSheet"
@@ -955,16 +953,11 @@ const styles = StyleSheet.create({
     // Modal styles
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
+        backgroundColor: '#111827',
     },
     modalContent: {
+        flex: 1,
         backgroundColor: '#1f2937',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        width: '100%',
-        height: '85%',
         borderWidth: 1,
         borderColor: '#374151',
     },
