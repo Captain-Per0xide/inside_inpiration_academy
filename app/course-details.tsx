@@ -85,6 +85,16 @@ const CourseDetailsPage = () => {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [savingCompletion, setSavingCompletion] = useState(false);
 
+  // Schedule class states
+  const [showScheduleClassModal, setShowScheduleClassModal] = useState(false);
+  const [classTopicName, setClassTopicName] = useState('');
+  const [meetingLink, setMeetingLink] = useState('');
+  const [classDate, setClassDate] = useState<Date>(getCurrentDate());
+  const [classTime, setClassTime] = useState<Date>(getCurrentDate());
+  const [showClassDatePicker, setShowClassDatePicker] = useState(false);
+  const [showClassTimePicker, setShowClassTimePicker] = useState(false);
+  const [savingScheduledClass, setSavingScheduledClass] = useState(false);
+
   // Constants for schedule editing
   const daysOfWeek = [
     "Sunday", "Monday", "Tuesday", "Wednesday",
