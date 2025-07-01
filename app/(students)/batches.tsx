@@ -220,7 +220,7 @@ const MyBatchesScreen = () => {
                             </View>
                         ) : (
                             <Text style={styles.defaultSuspensionText}>
-                                Payment overdue - Contact admin or clear your dues immediately
+                                Contact Admin for more details
                             </Text>
                         )}
 
@@ -236,7 +236,7 @@ const MyBatchesScreen = () => {
                         <View style={styles.urgentAction}>
                             <Ionicons name="flash" size={16} color="#DC2626" />
                             <Text style={styles.urgentActionText}>
-                                Immediate payment required to restore access
+                                Immediate attention required to restore access
                             </Text>
                         </View>
                     </View>
@@ -328,7 +328,7 @@ const MyBatchesScreen = () => {
                             { fontSize: isSmallScreen ? 14 : 16 },
                             isPending && styles.viewButtonTextDisabled
                         ]}>
-                            {isPending ? 'Clear your dues' : 'View'}
+                            {isPending ? 'Take Action' : 'View'}
                         </Text>
                     </TouchableOpacity>
                 </View>

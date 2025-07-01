@@ -45,17 +45,13 @@ export default function ProfilePage() {
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [showDobPicker, setShowDobPicker] = useState<boolean>(false);
     const [dobDate, setDobDate] = useState<Date>(new Date(2006, 0, 1));
+    const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
 
     const genderOptions = ['Male', 'Female', 'Other'];
-    const [userEmail, setUserEmail] = useState<string | null>(null);
 
     useEffect(() => {
-        const loadUserEmail = async () => {
-            const email = await authService.getCurrentUserEmail();
-            setUserEmail(email);
-        };
-        loadUserEmail();
         fetchUserData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const checkAndRedirectIfComplete = async () => {
@@ -102,6 +98,14 @@ export default function ProfilePage() {
                 setSelectedGender(data.gender || 'Other');
                 setImageUrl(data.user_image);
 
+                // Handle phone number formatting
+                if (data.phone_no && !data.phone_no.startsWith('+91 ')) {
+                    setFormData(prev => ({ ...prev, phone_no: '+91 ' + data.phone_no }));
+                }
+                if (data.alternative_phone_no && !data.alternative_phone_no.startsWith('+91 ')) {
+                    setFormData(prev => ({ ...prev, alternative_phone_no: '+91 ' + data.alternative_phone_no }));
+                }
+
                 if (data.dob) {
                     setDobDate(new Date(data.dob));
                 }
@@ -116,7 +120,8 @@ export default function ProfilePage() {
                         id,
                         email,
                         name: '',
-                        phone_no: '',
+                        phone_no: '+91 ',
+                        alternative_phone_no: '+91 ',
                         address: '',
                         dob: '',
                         univ_name: '',
@@ -166,6 +171,8 @@ export default function ProfilePage() {
 
             if (!result.canceled && result.assets[0]) {
                 setPickedImage(result.assets[0].uri);
+                // Clear validation error when user picks an image
+                setValidationErrors(prev => ({ ...prev, image: false }));
             }
         } catch (error) {
             Alert.alert('Error', 'Failed to pick image');
@@ -212,29 +219,46 @@ export default function ProfilePage() {
 
 
     const validateForm = (): boolean => {
-        const errors: string[] = [];
+        const errors: Record<string, boolean> = {};
+        let hasErrors = false;
 
         if (!formData.name?.trim()) {
-            errors.push('Name is required');
+            errors.name = true;
+            hasErrors = true;
         }
-        if (!formData.phone_no?.trim()) {
-            errors.push('Phone number is required');
+        if (!formData.phone_no?.trim() || formData.phone_no === '+91 ') {
+            errors.phone_no = true;
+            hasErrors = true;
+        }
+        if (!formData.alternative_phone_no?.trim() || formData.alternative_phone_no === '+91 ') {
+            errors.alternative_phone_no = true;
+            hasErrors = true;
         }
         if (!formData.address?.trim()) {
-            errors.push('Address is required');
+            errors.address = true;
+            hasErrors = true;
         }
         if (!formData.dob?.trim()) {
-            errors.push('Date of birth is required');
+            errors.dob = true;
+            hasErrors = true;
         }
         if (!formData.univ_name?.trim()) {
-            errors.push('University name is required');
+            errors.univ_name = true;
+            hasErrors = true;
         }
         if (!selectedGender || selectedGender.trim() === '') {
-            errors.push('Gender is required');
+            errors.gender = true;
+            hasErrors = true;
+        }
+        if (!imageUrl && !pickedImage) {
+            errors.image = true;
+            hasErrors = true;
         }
 
-        if (errors.length > 0) {
-            Alert.alert('Validation Error', errors.join('\n'));
+        setValidationErrors(errors);
+
+        if (hasErrors) {
+            Alert.alert('Validation Error', 'Please fill in all required fields (marked in red)');
             return false;
         }
 
@@ -274,7 +298,7 @@ export default function ProfilePage() {
                     console.warn('Image upload failed, continuing with profile update:', imageError);
                     // Continue with profile update even if image upload fails
                 }
-            }            const data = {
+            } const data = {
                 id,
                 email,
                 name: formData.name?.trim(),
@@ -307,9 +331,7 @@ export default function ProfilePage() {
             setImageUrl(uploadedImageUrl);
             if (pickedImage && imageUploadSuccess) {
                 setPickedImage(null); // Clear picked image since it's been uploaded
-            }            const successMessage = imageUploadSuccess
-                ? 'Profile updated successfully!'
-                : 'Profile updated successfully! (Image upload failed, but your other changes were saved)';
+            }
 
             // Use the routing utility to determine the appropriate route
             const redirectRoute = await determineUserRoute(id);
@@ -342,48 +364,8 @@ export default function ProfilePage() {
         if (selectedDate) {
             setDobDate(selectedDate);
             setFormData(prev => ({ ...prev, dob: formatDate(selectedDate) }));
-        }
-    }; const testAuth = async () => {
-        try {
-            const id = await authService.getCurrentUserUID();
-            const email = await authService.getCurrentUserEmail();
-
-            Alert.alert('Auth Info', `ID: ${id}\nEmail: ${email}`);
-            console.log('Current User ID:', id);
-            console.log('Current User Email:', email);
-        } catch (error) {
-            console.error('Auth test error:', error);
-            Alert.alert('Auth Error', error instanceof Error ? error.message : 'Unknown error');
-        }
-    };
-
-    const testImageUpload = async () => {
-        if (!pickedImage) {
-            Alert.alert('No Image', 'Please select an image first');
-            return;
-        }
-
-        try {
-            const id = await authService.getCurrentUserUID();
-            if (!id) {
-                Alert.alert('Error', 'User not authenticated');
-                return;
-            }
-
-            setIsLoading(true);
-            const uploadedUrl = await uploadImage(id);
-
-            if (uploadedUrl) {
-                Alert.alert('Success', 'Image uploaded successfully!');
-                setImageUrl(uploadedUrl);
-                setPickedImage(null);
-            } else {
-                Alert.alert('Failed', 'Image upload failed');
-            }
-        } catch (error) {
-            Alert.alert('Error', `Image upload test failed: ${error}`);
-        } finally {
-            setIsLoading(false);
+            // Clear validation error when user selects a date
+            setValidationErrors(prev => ({ ...prev, dob: false }));
         }
     };
 
@@ -393,22 +375,18 @@ export default function ProfilePage() {
                 <ActivityIndicator size="large" color="#007AFF" />
             </View>
         );
-    }    return (
+    } return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
             <Text style={styles.welcomeText}>Complete Your Profile</Text>
             <Text style={styles.subtitleText}>Please fill in all required fields to continue</Text>
-            
-            <TouchableOpacity onPress={testAuth} style={styles.testButton}>
-                <Text style={styles.testButtonText}>Test Auth</Text>
-            </TouchableOpacity>
 
-            {pickedImage && (
-                <TouchableOpacity onPress={testImageUpload} style={[styles.testButton, { backgroundColor: '#6f42c1' }]}>
-                    <Text style={styles.testButtonText}>Test Image Upload</Text>
-                </TouchableOpacity>
-            )}
-
-            <TouchableOpacity onPress={pickImage} style={styles.imageContainer}>
+            <TouchableOpacity
+                onPress={pickImage}
+                style={[
+                    styles.imageContainer,
+                    validationErrors.image && styles.errorBorder
+                ]}
+            >
                 <Image
                     source={
                         pickedImage
@@ -422,88 +400,187 @@ export default function ProfilePage() {
                 <View style={styles.editIcon}>
                     <Ionicons name="pencil" size={18} color="#000" />
                 </View>
+                {validationErrors.image && (
+                    <Text style={styles.errorText}>Profile image is required</Text>
+                )}
             </TouchableOpacity>
 
             <View style={styles.form}>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Full Name *"
-                    placeholderTextColor="#9CA3AF"
-                    value={formData.name || ''}
-                    onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
-                />
-
-                <TextInput
-                    style={styles.input}
-                    placeholder="Phone Number *"
-                    placeholderTextColor="#9CA3AF"
-                    value={formData.phone_no || ''}
-                    onChangeText={(text) => setFormData(prev => ({ ...prev, phone_no: text }))}
-                    keyboardType="phone-pad"
-                />
-
-                <TextInput
-                    style={styles.input}
-                    placeholder="Alternative Phone (Optional)"
-                    placeholderTextColor="#9CA3AF"
-                    value={formData.alternative_phone_no || ''}
-                    onChangeText={(text) => setFormData(prev => ({ ...prev, alternative_phone_no: text }))}
-                    keyboardType="phone-pad"
-                />
-
-                <TextInput
-                    style={styles.input}
-                    placeholder="Address *"
-                    placeholderTextColor="#9CA3AF"
-                    value={formData.address || ''}
-                    onChangeText={(text) => setFormData(prev => ({ ...prev, address: text }))}
-                    multiline
-                />
-
-                <TouchableOpacity
-                    style={styles.dateInput}
-                    onPress={() => setShowDobPicker(true)}
-                >
-                    <Text style={formData.dob ? styles.dateText : styles.placeholderText}>
-                        {formData.dob || 'Date of Birth *'}
+                <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, validationErrors.name && styles.errorLabel]}>
+                        Full Name *
                     </Text>
-                    <Ionicons name="calendar" size={20} color="#666" />
-                </TouchableOpacity>
+                    <TextInput
+                        style={[
+                            styles.input,
+                            validationErrors.name && styles.errorInput
+                        ]}
+                        placeholder="Enter your full name"
+                        placeholderTextColor="#9CA3AF"
+                        value={formData.name || ''}
+                        onChangeText={(text) => {
+                            setFormData(prev => ({ ...prev, name: text }));
+                            if (text.trim()) {
+                                setValidationErrors(prev => ({ ...prev, name: false }));
+                            }
+                        }}
+                    />
+                </View>
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="University Name *"
-                    placeholderTextColor="#9CA3AF"
-                    value={formData.univ_name || ''}
-                    onChangeText={(text) => setFormData(prev => ({ ...prev, univ_name: text }))}
-                />
+                <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, validationErrors.phone_no && styles.errorLabel]}>
+                        Phone Number *
+                    </Text>
+                    <TextInput
+                        style={[
+                            styles.input,
+                            validationErrors.phone_no && styles.errorInput
+                        ]}
+                        placeholder="Enter your phone number"
+                        placeholderTextColor="#9CA3AF"
+                        value={formData.phone_no || '+91 '}
+                        onChangeText={(text) => {
+                            if (!text.startsWith('+91 ')) {
+                                text = '+91 ' + text.replace('+91 ', '');
+                            }
+                            setFormData(prev => ({ ...prev, phone_no: text }));
+                            if (text.trim() && text !== '+91 ') {
+                                setValidationErrors(prev => ({ ...prev, phone_no: false }));
+                            }
+                        }}
+                        keyboardType="phone-pad"
+                    />
+                </View>
 
-                <TextInput
-                    style={styles.input}
-                    placeholder="Current Semester (Optional)"
-                    placeholderTextColor="#9CA3AF"
-                    value={formData.current_sem?.toString() || ''}
-                    onChangeText={(text) => setFormData(prev => ({ ...prev, current_sem: parseInt(text) || undefined }))}
-                    keyboardType="numeric"
-                />
+                <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, validationErrors.alternative_phone_no && styles.errorLabel]}>
+                        Alternative Phone *
+                    </Text>
+                    <TextInput
+                        style={[
+                            styles.input,
+                            validationErrors.alternative_phone_no && styles.errorInput
+                        ]}
+                        placeholder="Enter alternative phone number"
+                        placeholderTextColor="#9CA3AF"
+                        value={formData.alternative_phone_no || '+91 '}
+                        onChangeText={(text) => {
+                            if (!text.startsWith('+91 ')) {
+                                text = '+91 ' + text.replace('+91 ', '');
+                            }
+                            setFormData(prev => ({ ...prev, alternative_phone_no: text }));
+                            if (text.trim() && text !== '+91 ') {
+                                setValidationErrors(prev => ({ ...prev, alternative_phone_no: false }));
+                            }
+                        }}
+                        keyboardType="phone-pad"
+                    />
+                </View>
 
-                <View style={styles.pickerContainer}>
-                    <Text style={styles.pickerLabel}>Gender *</Text>
-                    <Picker
-                        selectedValue={selectedGender}
-                        onValueChange={(itemValue) => setSelectedGender(itemValue)}
-                        style={styles.picker}
-                        dropdownIconColor="#fff"
+                <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, validationErrors.address && styles.errorLabel]}>
+                        Address *
+                    </Text>
+                    <TextInput
+                        style={[
+                            styles.input,
+                            styles.textArea,
+                            validationErrors.address && styles.errorInput
+                        ]}
+                        placeholder="Enter your complete address"
+                        placeholderTextColor="#9CA3AF"
+                        value={formData.address || ''}
+                        onChangeText={(text) => {
+                            setFormData(prev => ({ ...prev, address: text }));
+                            if (text.trim()) {
+                                setValidationErrors(prev => ({ ...prev, address: false }));
+                            }
+                        }}
+                        multiline
+                        numberOfLines={3}
+                    />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, validationErrors.dob && styles.errorLabel]}>
+                        Date of Birth *
+                    </Text>
+                    <TouchableOpacity
+                        style={[
+                            styles.dateInput,
+                            validationErrors.dob && styles.errorInput
+                        ]}
+                        onPress={() => setShowDobPicker(true)}
                     >
-                        {genderOptions.map((option) => (
-                            <Picker.Item 
-                                key={option} 
-                                label={option} 
-                                value={option} 
-                                style={{ color: '#fff', backgroundColor: '#1F2937' }} 
-                            />
-                        ))}
-                    </Picker>
+                        <Text style={formData.dob ? styles.dateText : styles.placeholderText}>
+                            {formData.dob || 'Select your date of birth'}
+                        </Text>
+                        <Ionicons name="calendar" size={20} color="#666" />
+                    </TouchableOpacity>
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, validationErrors.univ_name && styles.errorLabel]}>
+                        University Name *
+                    </Text>
+                    <TextInput
+                        style={[
+                            styles.input,
+                            validationErrors.univ_name && styles.errorInput
+                        ]}
+                        placeholder="Enter your university name"
+                        placeholderTextColor="#9CA3AF"
+                        value={formData.univ_name || ''}
+                        onChangeText={(text) => {
+                            setFormData(prev => ({ ...prev, univ_name: text }));
+                            if (text.trim()) {
+                                setValidationErrors(prev => ({ ...prev, univ_name: false }));
+                            }
+                        }}
+                    />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>Current Semester (Optional)</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Enter your current semester"
+                        placeholderTextColor="#9CA3AF"
+                        value={formData.current_sem?.toString() || ''}
+                        onChangeText={(text) => setFormData(prev => ({ ...prev, current_sem: parseInt(text) || undefined }))}
+                        keyboardType="numeric"
+                    />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={[styles.inputLabel, validationErrors.gender && styles.errorLabel]}>
+                        Gender *
+                    </Text>
+                    <View style={[
+                        styles.pickerContainer,
+                        validationErrors.gender && styles.errorInput
+                    ]}>
+                        <Picker
+                            selectedValue={selectedGender}
+                            onValueChange={(itemValue) => {
+                                setSelectedGender(itemValue);
+                                if (itemValue && itemValue.trim()) {
+                                    setValidationErrors(prev => ({ ...prev, gender: false }));
+                                }
+                            }}
+                            style={styles.picker}
+                            dropdownIconColor="#9CA3AF"
+                        >
+                            {genderOptions.map((option) => (
+                                <Picker.Item
+                                    key={option}
+                                    label={option}
+                                    value={option}
+                                    color="#fff"
+                                />
+                            ))}
+                        </Picker>
+                    </View>
                 </View>
 
                 <TouchableOpacity
@@ -538,12 +615,14 @@ const styles = StyleSheet.create({
     },
     contentContainer: {
         padding: 16,
+        paddingTop: 60, // Added proper top padding
     },
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-    },    welcomeText: {
+    },
+    welcomeText: {
         fontSize: 16,
         textAlign: 'center',
         marginBottom: 16,
@@ -554,19 +633,6 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: 16,
         color: '#9CA3AF',
-    },
-    testButton: {
-        backgroundColor: '#28a745',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: 6,
-        alignSelf: 'center',
-        marginBottom: 16,
-    },
-    testButtonText: {
-        color: '#fff',
-        fontSize: 14,
-        fontWeight: '600',
     },
     imageContainer: {
         alignSelf: 'center',
@@ -592,7 +658,16 @@ const styles = StyleSheet.create({
         borderColor: '#ddd',
     },
     form: {
-        gap: 16,
+        gap: 20, // Increased gap between form elements
+    },
+    inputGroup: {
+        gap: 8, // Space between label and input
+    },
+    inputLabel: {
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 4,
     },
     input: {
         borderWidth: 1,
@@ -603,6 +678,10 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: '#fff',
         backgroundColor: '#1F2937',
+    },
+    textArea: {
+        minHeight: 80,
+        textAlignVertical: 'top',
     },
     dateInput: {
         borderWidth: 1,
@@ -621,38 +700,52 @@ const styles = StyleSheet.create({
     },
     placeholderText: {
         fontSize: 16,
-        color: '#E4E4E7',
+        color: '#9CA3AF',
     },
     pickerContainer: {
         borderWidth: 1,
         borderColor: '#374151',
         borderRadius: 8,
         backgroundColor: '#1F2937',
-    },
-    pickerLabel: {
-        color: '#fff',
-        fontSize: 14,
-        fontWeight: '600',
-        paddingHorizontal: 12,
-        paddingTop: 8,
-        marginBottom: -8,
+        overflow: 'hidden',
     },
     picker: {
         height: 50,
         color: '#fff',
+        backgroundColor: '#1F2937',
     },
     submitButton: {
         backgroundColor: '#007AFF',
         paddingVertical: 12,
         borderRadius: 8,
         alignItems: 'center',
-        marginTop: 8,
+        marginTop: 20,
     },
     submitButtonDisabled: {
         backgroundColor: '#ccc',
-    }, submitButtonText: {
+    },
+    submitButtonText: {
         color: '#fff',
         fontSize: 16,
         fontWeight: '600',
+    },
+    // Error styles
+    errorInput: {
+        borderColor: '#ef4444',
+        borderWidth: 2,
+    },
+    errorLabel: {
+        color: '#ef4444',
+    },
+    errorBorder: {
+        borderWidth: 2,
+        borderColor: '#ef4444',
+        borderRadius: 50,
+    },
+    errorText: {
+        color: '#ef4444',
+        fontSize: 12,
+        marginTop: 4,
+        textAlign: 'center',
     },
 });

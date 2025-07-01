@@ -77,6 +77,8 @@ export const determineUserRoute = async (userId: string): Promise<string> => {
       return "/(admin)";
     } else if (userData.role === "student") {
       return "/(students)";
+    } else if (userData.role === "banned") {
+      return "/(banned)";
     } else {
       // Default or no role - go to guest
       return "/(guest)";
