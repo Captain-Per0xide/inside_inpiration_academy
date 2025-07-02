@@ -21,6 +21,7 @@
     "@react-navigation/native": "^7.1.6",
     "@supabase/supabase-js": "^2.50.0",
     "@types/uuid": "^10.0.0",
+    "cliui": "^9.0.1",
     "expo": "53.0.16",
     "expo-av": "~15.1.7",
     "expo-blur": "~14.1.5",

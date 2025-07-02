@@ -1143,7 +1143,10 @@ const CourseDetailsPage = () => {
             {recentVideos.length > 0 && (
               <TouchableOpacity
                 style={styles.viewAllButton}
-                onPress={() => router.push(`/all-videos?courseId=${courseId}&courseName=${encodeURIComponent(course.full_name)}`)}
+                onPress={() => router.push({
+                  pathname: '/all-videos' as any,
+                  params: { courseId, courseName: course.full_name }
+                })}
               >
                 <Text style={styles.viewAllButtonText}>View All</Text>
                 <Ionicons name="chevron-forward" size={16} color="#3B82F6" />
@@ -1235,7 +1238,10 @@ const CourseDetailsPage = () => {
             {/* eBooks */}
             <TouchableOpacity
               style={styles.materialCard}
-              onPress={() => router.push(`/ebooks?courseId=${courseId}&courseName=${encodeURIComponent(course.full_name)}`)}
+              onPress={() => router.push({
+                pathname: '/ebooks' as any,
+                params: { courseId, courseName: course.full_name }
+              })}
             >
               <View style={[styles.materialIcon, { backgroundColor: "#E3F2FD" }]}>
                 <Ionicons name="book-outline" size={32} color="#1976D2" />
@@ -1251,7 +1257,10 @@ const CourseDetailsPage = () => {
             {/* Notes */}
             <TouchableOpacity
               style={styles.materialCard}
-              onPress={() => router.push(`/notes?courseId=${courseId}&courseName=${encodeURIComponent(course.full_name)}`)}
+              onPress={() => router.push({
+                pathname: '/notes' as any,
+                params: { courseId, courseName: course.full_name }
+              })}
             >
               <View style={[styles.materialIcon, { backgroundColor: "#E8F5E8" }]}>
                 <Ionicons name="document-text-outline" size={32} color="#388E3C" />
@@ -1268,7 +1277,10 @@ const CourseDetailsPage = () => {
             {isCoreCurriculum && (
               <TouchableOpacity
                 style={styles.materialCard}
-                onPress={() => router.push(`/sample-questions?courseId=${courseId}&courseName=${encodeURIComponent(course.full_name)}`)}
+                onPress={() => router.push({
+                  pathname: '/sample-questions' as any,
+                  params: { courseId, courseName: course.full_name }
+                })}
               >
                 <View style={[styles.materialIcon, { backgroundColor: "#FFF3E0" }]}>
                   <Ionicons name="help-circle-outline" size={32} color="#F57C00" />
@@ -1286,7 +1298,10 @@ const CourseDetailsPage = () => {
             {isCoreCurriculum && (
               <TouchableOpacity
                 style={styles.materialCard}
-                onPress={() => router.push(`/previous-year-questions?courseId=${courseId}&courseName=${encodeURIComponent(course.full_name)}`)}
+                onPress={() => router.push({
+                  pathname: '/previous-year-questions' as any,
+                  params: { courseId, courseName: course.full_name }
+                })}
               >
                 <View style={[styles.materialIcon, { backgroundColor: "#FCE4EC" }]}>
                   <Ionicons name="archive-outline" size={32} color="#C2185B" />

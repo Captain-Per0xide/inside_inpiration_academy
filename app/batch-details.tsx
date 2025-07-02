@@ -1,10 +1,14 @@
+import PDFViewer from '@/components/PDFViewer';
+import VideoPlayer from '@/components/VideoPlayer';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    BackHandler,
     Dimensions,
     FlatList,
     Linking,
@@ -19,6 +23,7 @@ import {
 import Animated, {
     FadeInDown,
     FadeInUp,
+    FadeOutUp,
     SlideInRight
 } from 'react-native-reanimated';
 
@@ -80,6 +85,20 @@ interface StudyMaterial {
     upload_date?: string;
 }
 
+interface RecordedVideo {
+    video_id: string;
+    title: string;
+    description?: string;
+    video_url: string;
+    thumbnail_url?: string;
+    class_notes_url?: string;
+    assignment_url?: string;
+    created_at: string;
+    uploaded_at: string;
+    scheduled_class_id?: string;
+    is_from_scheduled_class: boolean;
+}
+
 const BatchDetailsScreen = () => {
     const { courseId } = useLocalSearchParams<{
         courseId: string;
@@ -88,20 +107,111 @@ const BatchDetailsScreen = () => {
     const [course, setCourse] = useState<Course | null>(null);
     const [liveClasses, setLiveClasses] = useState<LiveClass[]>([]);
     const [recordedClasses, setRecordedClasses] = useState<LiveClass[]>([]);
+    const [recordedVideos, setRecordedVideos] = useState<RecordedVideo[]>([]);
     const [studyMaterials, setStudyMaterials] = useState<StudyMaterial[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [screenData, setScreenData] = useState(Dimensions.get('window'));
     const [activeTab, setActiveTab] = useState<'classes' | 'recorded' | 'materials'>('classes');
+    const [sortOrder, setSortOrder] = useState<'oldest' | 'newest'>('oldest');
+    const [selectedPDF, setSelectedPDF] = useState<{ url: string; title: string; type: 'notes' | 'assignment' } | null>(null);
+    const [expandedVideos, setExpandedVideos] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         const onChange = (result: { window: any }) => {
             setScreenData(result.window);
+            // Log orientation changes for debugging
+            const isLandscape = result.window.width > result.window.height;
+            console.log('Orientation changed:', isLandscape ? 'Landscape' : 'Portrait', 
+                       `${result.window.width}x${result.window.height}`);
         };
 
         const subscription = Dimensions.addEventListener('change', onChange);
         return () => subscription?.remove();
     }, []);
+
+    // Screen orientation effect for PDF viewing
+    useEffect(() => {
+        if (selectedPDF) {
+            // Allow all orientations when viewing PDF, don't lock to landscape
+            ScreenOrientation.unlockAsync();
+        } else {
+            // Allow all orientations when not viewing PDF
+            ScreenOrientation.unlockAsync();
+        }
+
+        return () => {
+            // Cleanup: unlock orientation when component unmounts
+            ScreenOrientation.unlockAsync();
+        };
+    }, [selectedPDF]);
+
+    // Additional orientation listener specifically for PDF viewer
+    useEffect(() => {
+        if (!selectedPDF) return;
+
+        const handleOrientationChange = (result: { window: any }) => {
+            const isLandscape = result.window.width > result.window.height;
+            console.log('PDF viewer orientation change:', isLandscape ? 'Landscape' : 'Portrait');
+            // Force a small delay to ensure proper re-render
+            setTimeout(() => {
+                setScreenData(result.window);
+            }, 100);
+        };
+
+        const subscription = Dimensions.addEventListener('change', handleOrientationChange);
+        return () => subscription?.remove();
+    }, [selectedPDF]);
+
+    // Handle Android back button
+    useEffect(() => {
+        const backAction = () => {
+            if (selectedPDF) {
+                setSelectedPDF(null);
+                return true; // Prevent default behavior
+            }
+            return false; // Allow default behavior
+        };
+
+        const backHandler = BackHandler.addEventListener(
+            'hardwareBackPress',
+            backAction,
+        );
+
+        return () => backHandler.remove();
+    }, [selectedPDF]);
+
+    const handleBack = () => {
+        console.log('handleBack called, selectedPDF:', selectedPDF ? 'exists' : 'null');
+        if (selectedPDF) {
+            setSelectedPDF(null);
+        } else {
+            router.back();
+        }
+    };
+
+    const handlePDFBack = () => {
+        console.log('PDF back button pressed');
+        setSelectedPDF(null);
+    };
+
+    const handleViewPDF = (url: string, title: string, type: 'notes' | 'assignment') => {
+        if (!url) {
+            Alert.alert('Error', 'PDF file not available');
+            return;
+        }
+        setSelectedPDF({ url, title, type });
+    };
+
+    const toggleVideoExpansion = (videoId: string) => {
+        const newExpandedVideos = new Set(expandedVideos);
+        if (newExpandedVideos.has(videoId)) {
+            newExpandedVideos.delete(videoId);
+        } else {
+            newExpandedVideos.add(videoId);
+        }
+        setExpandedVideos(newExpandedVideos);
+    };
 
     const fetchBatchDetails = useCallback(async (isRefresh = false) => {
         try {
@@ -114,7 +224,7 @@ const BatchDetailsScreen = () => {
             // Fetch course details
             const { data: courseData, error: courseError } = await supabase
                 .from('courses')
-                .select('*')
+                .select('*, recorded_classes')
                 .eq('id', courseId)
                 .single();
 
@@ -178,6 +288,36 @@ const BatchDetailsScreen = () => {
                 });
             }
             setRecordedClasses(allCompletedClasses);
+
+            // Parse recorded videos from recorded_classes column
+            const videos: RecordedVideo[] = [];
+            if (courseData.recorded_classes) {
+                const recordedClassesData = Array.isArray(courseData.recorded_classes) ? courseData.recorded_classes : [];
+                recordedClassesData.forEach((video: any) => {
+                    videos.push({
+                        video_id: video.video_id,
+                        title: video.title,
+                        description: video.description,
+                        video_url: video.video_url,
+                        thumbnail_url: video.thumbnail_url,
+                        class_notes_url: video.class_notes_url,
+                        assignment_url: video.assignment_url,
+                        created_at: video.created_at || video.uploaded_at,
+                        uploaded_at: video.uploaded_at || video.created_at,
+                        scheduled_class_id: video.scheduled_class_id,
+                        is_from_scheduled_class: video.is_from_scheduled_class || false
+                    });
+                });
+            }
+            
+            // Sort videos by oldest first (default)
+            const sortedVideos = videos.sort((a, b) => {
+                const dateA = new Date(a.uploaded_at || a.created_at).getTime();
+                const dateB = new Date(b.uploaded_at || b.created_at).getTime();
+                return dateA - dateB;
+            });
+            
+            setRecordedVideos(sortedVideos);
 
             // Parse study materials from course JSONB data
             const materials: StudyMaterial[] = [];
@@ -276,10 +416,6 @@ const BatchDetailsScreen = () => {
 
     const onRefresh = () => {
         fetchBatchDetails(true);
-    };
-
-    const handleBack = () => {
-        router.back();
     };
 
     // Helper function to check if a class should be shown in Live Classes tab
@@ -391,6 +527,16 @@ const BatchDetailsScreen = () => {
             minute: '2-digit',
             hour12: true
         });
+    };
+
+    const getSortedVideos = () => {
+        const sorted = [...recordedVideos].sort((a, b) => {
+            const dateA = new Date(a.uploaded_at || a.created_at).getTime();
+            const dateB = new Date(b.uploaded_at || b.created_at).getTime();
+            
+            return sortOrder === 'oldest' ? dateA - dateB : dateB - dateA;
+        });
+        return sorted;
     };
 
     const renderLiveClassItem = ({ item }: { item: LiveClass }) => {
@@ -540,6 +686,124 @@ const BatchDetailsScreen = () => {
                     <Text style={styles.viewText}>Tap to view</Text>
                 </View>
             </TouchableOpacity>
+        );
+    };
+
+    const renderRecordedVideoItem = ({ item }: { item: RecordedVideo }) => {
+        const isSmallScreen = screenData.width < 600;
+        const isExpanded = expandedVideos.has(item.video_id);
+
+        return (
+            <View style={styles.videoCard}>
+                {/* Video Header - Always Visible */}
+                <TouchableOpacity 
+                    style={styles.videoHeader}
+                    onPress={() => toggleVideoExpansion(item.video_id)}
+                    activeOpacity={0.7}
+                >
+                    <View style={styles.videoHeaderContent}>
+                        <View style={styles.videoHeaderLeft}>
+                            <Text style={[styles.videoCardTitle, { fontSize: isSmallScreen ? 14 : 16 }]} numberOfLines={2}>
+                                {item.title}
+                            </Text>
+                            {item.description && (
+                                <Text style={[styles.videoCardDescription, { fontSize: isSmallScreen ? 12 : 14 }]} numberOfLines={1}>
+                                    {item.description}
+                                </Text>
+                            )}
+                        </View>
+                        <View style={styles.videoHeaderRight}>
+                            {item.is_from_scheduled_class && (
+                                <View style={styles.scheduledVideoBadge}>
+                                    <Ionicons name="calendar" size={10} color="#10B981" />
+                                </View>
+                            )}
+                            <Ionicons 
+                                name={isExpanded ? "chevron-up" : "chevron-down"} 
+                                size={20} 
+                                color="#94A3B8" 
+                            />
+                        </View>
+                    </View>
+
+                    {/* Date and Upload Info */}
+                    <View style={styles.videoMetaInfo}>
+                        <View style={styles.videoMetaItem}>
+                            <Ionicons name="calendar-outline" size={14} color="#9CA3AF" />
+                            <Text style={[styles.videoMetaText, { fontSize: isSmallScreen ? 12 : 13 }]}>
+                                {new Date(item.uploaded_at || item.created_at).toLocaleDateString('en-GB')} at {new Date(item.uploaded_at || item.created_at).toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                        </View>
+                        {item.is_from_scheduled_class && item.scheduled_class_id && (
+                            <View style={styles.videoMetaItem}>
+                                <Ionicons name="link-outline" size={14} color="#10B981" />
+                                <Text style={[styles.videoMetaText, { fontSize: isSmallScreen ? 11 : 12 }]}>
+                                    Linked to scheduled class
+                                </Text>
+                            </View>
+                        )}
+                        {(item.class_notes_url || item.assignment_url) && (
+                            <View style={styles.videoResourceIndicators}>
+                                {item.class_notes_url && (
+                                    <Ionicons name="document-text" size={14} color="#10B981" />
+                                )}
+                                {item.assignment_url && (
+                                    <Ionicons name="document" size={14} color="#F59E0B" />
+                                )}
+                                <Text style={[styles.resourceIndicatorText, { fontSize: isSmallScreen ? 11 : 12 }]}>
+                                    Resources available
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+                </TouchableOpacity>
+
+                {/* Expanded Content - Video Player and Resources */}
+                {isExpanded && (
+                    <Animated.View 
+                        entering={FadeInDown.duration(300).springify()}
+                        exiting={FadeOutUp.duration(200)}
+                        style={styles.videoExpandedContent}
+                    >
+                        {/* Video Player */}
+                        <VideoPlayer
+                            videoUrl={item.video_url}
+                            thumbnailUrl={item.thumbnail_url}
+                            title=""
+                            style={styles.videoPlayerCard}
+                        />
+
+                        {/* Resources Section */}
+                        {(item.class_notes_url || item.assignment_url) && (
+                            <View style={styles.resourcesSection}>
+                                <Text style={[styles.resourcesSectionTitle, { fontSize: isSmallScreen ? 14 : 15 }]}>
+                                    Resources:
+                                </Text>
+                                <View style={styles.resourceButtonsContainer}>
+                                    {item.class_notes_url && (
+                                        <TouchableOpacity
+                                            style={styles.resourceActionButton}
+                                            onPress={() => handleViewPDF(item.class_notes_url!, 'Class Notes - ' + item.title, 'notes')}
+                                        >
+                                            <Ionicons name="document-text" size={18} color="#10B981" />
+                                            <Text style={styles.resourceActionButtonText}>Class Notes</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                    {item.assignment_url && (
+                                        <TouchableOpacity
+                                            style={styles.resourceActionButton}
+                                            onPress={() => handleViewPDF(item.assignment_url!, 'Assignment - ' + item.title, 'assignment')}
+                                        >
+                                            <Ionicons name="document" size={18} color="#F59E0B" />
+                                            <Text style={styles.resourceActionButtonText}>Assignment</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                            </View>
+                        )}
+                    </Animated.View>
+                )}
+            </View>
         );
     };
 
@@ -700,6 +964,85 @@ const BatchDetailsScreen = () => {
         );
     };
 
+    const renderPDFViewer = () => {
+        if (!selectedPDF) return null;
+
+        // Determine orientation and adjust layout accordingly
+        const isLandscape = screenData.width > screenData.height;
+        const statusBarHeight = isLandscape ? 0 : 44; // iOS status bar height
+        const headerPaddingTop = isLandscape ? 16 : statusBarHeight + 16;
+        const headerHeight = isLandscape ? 70 : 90;
+
+        return (
+            <View style={styles.pdfContainer}>
+                <View style={[
+                    styles.pdfHeader, 
+                    { 
+                        paddingTop: headerPaddingTop,
+                        minHeight: headerHeight,
+                        paddingHorizontal: isLandscape ? 16 : 20,
+                        paddingBottom: isLandscape ? 12 : 16
+                    }
+                ]}>
+                    <TouchableOpacity 
+                        onPress={handlePDFBack} 
+                        style={[
+                            styles.pdfBackButton,
+                            { 
+                                minWidth: isLandscape ? 40 : 48,
+                                minHeight: isLandscape ? 40 : 48,
+                                padding: isLandscape ? 8 : 12
+                            }
+                        ]}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                        <Ionicons name="arrow-back" size={isLandscape ? 20 : 24} color="#F8FAFC" />
+                    </TouchableOpacity>
+                    <View style={styles.pdfTitleContainer}>
+                        <Text style={[
+                            styles.pdfTitle, 
+                            { 
+                                fontSize: isLandscape ? 14 : 16,
+                            }
+                        ]} numberOfLines={1} ellipsizeMode="tail">
+                            {selectedPDF.title}
+                        </Text>
+                    </View>
+                    <View style={{ width: isLandscape ? 40 : 48 }} />
+                </View>
+
+                <PDFViewer
+                    url={selectedPDF.url}
+                    onLoadComplete={(numberOfPages, filePath) => {
+                        console.log(`PDF loaded. Pages: ${numberOfPages}, Orientation: ${isLandscape ? 'Landscape' : 'Portrait'}`);
+                    }}
+                    onError={(error) => {
+                        console.log('PDF Error:', error);
+                        Alert.alert('Error', 'Failed to load PDF');
+                    }}
+                />
+            </View>
+        );
+    };
+
+    // Show PDF viewer if PDF is selected
+    if (selectedPDF) {
+        return (
+            <>
+                <Stack.Screen
+                    options={{
+                        title: "PDF Viewer",
+                        headerShown: false,
+                        statusBarStyle: 'light',
+                        statusBarBackgroundColor: '#1E293B'
+                    }}
+                />
+                {renderPDFViewer()}
+            </>
+        );
+    }
+
     if (loading) {
         return (
             <SafeAreaView style={styles.container}>
@@ -815,7 +1158,7 @@ const BatchDetailsScreen = () => {
                         color={activeTab === 'recorded' ? '#F8FAFC' : '#94A3B8'}
                     />
                     <Text style={[styles.tabText, activeTab === 'recorded' && styles.activeTabText]}>
-                        Recorded
+                        Resources
                     </Text>
                 </TouchableOpacity>
 
@@ -858,27 +1201,53 @@ const BatchDetailsScreen = () => {
                     }
                 />
             ) : activeTab === 'recorded' ? (
-                <FlatList
-                    data={recordedClasses}
-                    keyExtractor={item => item.id}
-                    renderItem={renderLiveClassItem}
-                    contentContainerStyle={styles.list}
-                    showsVerticalScrollIndicator={false}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={refreshing}
-                            onRefresh={onRefresh}
-                            colors={['#667EEA']}
-                            tintColor="#667EEA"
-                        />
-                    }
-                    ListEmptyComponent={
-                        <View style={styles.emptyContainer}>
-                            <Ionicons name="play-circle-outline" size={64} color="#94A3B8" />
-                            <Text style={styles.emptyText}>No recorded classes available</Text>
+                <View style={styles.container}>
+                    {/* Sort Header */}
+                    <View style={styles.sortHeader}>
+                        <View style={styles.sortTitleContainer}>
+                            <Ionicons name="videocam" size={20} color="#F8FAFC" />
+                            <Text style={styles.sortTitle}>Recorded Videos ({recordedVideos.length})</Text>
                         </View>
-                    }
-                />
+                        <TouchableOpacity
+                            style={styles.sortButton}
+                            onPress={() => setSortOrder(sortOrder === 'oldest' ? 'newest' : 'oldest')}
+                        >
+                            <Ionicons
+                                name={sortOrder === 'oldest' ? 'arrow-up' : 'arrow-down'}
+                                size={16}
+                                color="#60A5FA"
+                            />
+                            <Text style={styles.sortButtonText}>
+                                {sortOrder === 'oldest' ? 'Oldest First' : 'Newest First'}
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    <FlatList
+                        data={getSortedVideos()}
+                        keyExtractor={item => item.video_id}
+                        renderItem={renderRecordedVideoItem}
+                        contentContainerStyle={[styles.list, { paddingTop: 16 }]}
+                        showsVerticalScrollIndicator={false}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={onRefresh}
+                                colors={['#667EEA']}
+                                tintColor="#667EEA"
+                            />
+                        }
+                        ListEmptyComponent={
+                            <View style={styles.emptyContainer}>
+                                <Ionicons name="videocam-outline" size={64} color="#94A3B8" />
+                                <Text style={styles.emptyText}>No recorded videos available</Text>
+                                <Text style={styles.emptySubText}>
+                                    Recorded videos will appear here once they are uploaded
+                                </Text>
+                            </View>
+                        }
+                    />
+                </View>
             ) : (
                 renderStudyMaterialsGrid()
             )}
@@ -1299,6 +1668,294 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: '#60A5FA',
         fontWeight: '600',
+    },
+    // Video card styles
+    videoCard: {
+        backgroundColor: '#1E293B',
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: '#334155',
+        marginBottom: 16,
+    },
+    videoPlayerCard: {
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+    },
+    videoCardInfo: {
+        padding: 16,
+    },
+    videoCardHeader: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    videoCardTitle: {
+        color: '#F9FAFB',
+        fontWeight: '600',
+        flex: 1,
+        marginRight: 8,
+        lineHeight: 20,
+    },
+    scheduledVideoBadge: {
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        backgroundColor: '#D1FAE5',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    videoCardDescription: {
+        color: '#D1D5DB',
+        lineHeight: 18,
+        marginBottom: 12,
+    },
+    videoCardMeta: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    videoCardMetaItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    videoCardMetaText: {
+        color: '#9CA3AF',
+    },
+    videoCardResources: {
+        flexDirection: 'row',
+        gap: 6,
+    },
+    // Upload details styles
+    uploadDetailsContainer: {
+        backgroundColor: '#334155',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 12,
+        borderLeftWidth: 3,
+        borderLeftColor: '#60A5FA',
+    },
+    uploadDetailsTitle: {
+        color: '#E2E8F0',
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    uploadDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: 4,
+    },
+    uploadDetailText: {
+        color: '#CBD5E1',
+        flex: 1,
+        lineHeight: 16,
+    },
+    // Resources styles
+    resourcesContainer: {
+        backgroundColor: '#1E3A8A',
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 12,
+    },
+    resourcesTitle: {
+        color: '#DBEAFE',
+        fontWeight: '600',
+        marginBottom: 8,
+    },
+    resourcesList: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    resourceButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1E40AF',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 6,
+        gap: 4,
+        flex: 1,
+    },
+    resourceButtonText: {
+        color: '#F8FAFC',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    // Sort header styles
+    sortHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        backgroundColor: '#1E293B',
+        borderBottomWidth: 1,
+        borderBottomColor: '#334155',
+    },
+    sortTitleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    sortTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#F8FAFC',
+    },
+    sortButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#1E3A8A',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8,
+        gap: 6,
+    },
+    sortButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#60A5FA',
+    },
+    emptySubText: {
+        marginTop: 8,
+        fontSize: 14,
+        color: '#64748B',
+        textAlign: 'center',
+        fontWeight: '500',
+        lineHeight: 20,
+    },
+    // Video card collapsible styles
+    videoHeader: {
+        backgroundColor: '#1E293B',
+        borderRadius: 12,
+        marginBottom: 4,
+        overflow: 'hidden',
+    },
+    videoHeaderContent: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        padding: 16,
+    },
+    videoHeaderLeft: {
+        flex: 1,
+        marginRight: 12,
+    },
+    videoHeaderRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    videoMetaInfo: {
+        paddingHorizontal: 16,
+        paddingBottom: 16,
+        gap: 8,
+    },
+    videoMetaItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    videoMetaText: {
+        color: '#94A3B8',
+        fontWeight: '500',
+    },
+    videoResourceIndicators: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    resourceIndicatorText: {
+        color: '#94A3B8',
+        fontWeight: '500',
+        marginLeft: 4,
+    },
+    videoExpandedContent: {
+        backgroundColor: '#0F172A',
+        borderBottomLeftRadius: 12,
+        borderBottomRightRadius: 12,
+        overflow: 'hidden',
+    },
+    resourcesSection: {
+        padding: 16,
+        borderTopWidth: 1,
+        borderTopColor: '#334155',
+    },
+    resourcesSectionTitle: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#F8FAFC',
+        marginBottom: 12,
+    },
+    resourceButtonsContainer: {
+        flexDirection: 'row',
+        gap: 12,
+        flexWrap: 'wrap',
+    },
+    resourceActionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#374151',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 8,
+        gap: 8,
+        minWidth: 120,
+        borderWidth: 1,
+        borderColor: '#4B5563',
+    },
+    resourceActionButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#F8FAFC',
+        textAlign: 'center',
+    },
+    // PDF viewer styles
+    pdfContainer: {
+        flex: 1,
+        backgroundColor: '#0F172A',
+        paddingTop: 0, // Remove any default padding
+    },
+    pdfHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        backgroundColor: '#1E293B',
+        borderBottomWidth: 1,
+        borderBottomColor: '#334155',
+        minHeight: 70,
+        position: 'relative',
+        zIndex: 1000,
+    },
+    pdfBackButton: {
+        borderRadius: 8,
+        backgroundColor: '#374151',
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#4B5563',
+    },
+    pdfTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        color: '#F8FAFC',
+        textAlign: 'center',
+    },
+    pdfTitleContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginHorizontal: 12,
+        paddingHorizontal: 8,
+    },
+    pdfViewer: {
+        flex: 1,
+        backgroundColor: '#0F172A',
     },
 });
 
