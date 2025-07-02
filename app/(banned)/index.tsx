@@ -1,44 +1,36 @@
-import { supabase } from '@/lib/supabase';
 import { authService } from '@/services/authService';
+import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio } from 'expo-av';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
+    Alert,
     Animated,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
+    View,
     Vibration,
-    View
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function BannedPage() {
     const [userName, setUserName] = useState<string>('User');
     const [userGender, setUserGender] = useState<string>('unknown');
+    const [userEmail, setUserEmail] = useState<string>('');
     const [shakeAnimation] = useState(new Animated.Value(0));
     const [pulseAnimation] = useState(new Animated.Value(1));
     const [fireAnimation] = useState(new Animated.Value(0));
     const [rotateAnimation] = useState(new Animated.Value(0));
     const [cryAnimation] = useState(new Animated.Value(0));
     const [humiliationCount, setHumiliationCount] = useState<number>(0);
-    const [sound, setSound] = useState<Audio.Sound | null>(null);
 
     useEffect(() => {
         fetchUserData();
         startAnimations();
         startCryingEffect();
         trackHumiliation();
-        loadAndPlayBackgroundMusic();
-        
-        // Cleanup function to stop music when component unmounts
-        return () => {
-            if (sound) {
-                sound.unloadAsync();
-            }
-        };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -46,10 +38,11 @@ export default function BannedPage() {
         try {
             const email = await authService.getCurrentUserEmail();
             if (email) {
+                setUserEmail(email);
                 // Extract name from email
                 const name = email.split('@')[0];
                 setUserName(name.charAt(0).toUpperCase() + name.slice(1));
-
+                
                 // Fetch user data from Supabase
                 const { data, error } = await supabase
                     .from('users')
@@ -69,40 +62,13 @@ export default function BannedPage() {
         }
     };
 
-    const loadAndPlayBackgroundMusic = async () => {
-        try {
-            // Configure audio mode
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: false,
-                staysActiveInBackground: true,
-                playsInSilentModeIOS: true,
-                shouldDuckAndroid: true,
-                playThroughEarpieceAndroid: false,
-            });
-
-            // Load the dramatic background music
-            const { sound: newSound } = await Audio.Sound.createAsync(
-                require('../../assets/sounds/sad-meow-song.mp3'), // Replace with your actual sound file
-                {
-                    isLooping: true,
-                    volume: 0.4, // Lower volume so it doesn't overpower
-                    shouldPlay: true,
-                }
-            );
-
-            setSound(newSound);
-        } catch (error) {
-            console.error('Error loading background music:', error);
-        }
-    };
-
     const trackHumiliation = async () => {
         try {
             const stored = await AsyncStorage.getItem('humiliation_count');
             const count = stored ? parseInt(stored) + 1 : 1;
             setHumiliationCount(count);
             await AsyncStorage.setItem('humiliation_count', count.toString());
-
+            
             // Vibrate device for psychological impact
             Vibration.vibrate([500, 300, 500, 300, 1000]);
         } catch (error) {
@@ -193,21 +159,29 @@ export default function BannedPage() {
         Animated.loop(rotateSequence).start();
     };
 
-    const handleLogout = async () => {
-        try {
-            // Stop background music
-            if (sound) {
-                await sound.stopAsync();
-                await sound.unloadAsync();
-            }
-            
-            // Track final humiliation
-            await AsyncStorage.setItem('banned_user_cried', 'true');
-            await authService.logout();
-            router.replace('/(auth)');
-        } catch (error) {
-            console.error('Logout error:', error);
-        }
+    const handleLogout = () => {
+        const genderSpecificInsult = getGenderSpecificLogoutInsult();
+        Alert.alert(
+            '💀 FINAL HUMILIATION 💀',
+            genderSpecificInsult,
+            [
+                { text: 'Stay and cry more', style: 'cancel' },
+                {
+                    text: 'DIE & LEAVE FOREVER',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            // Track final humiliation
+                            await AsyncStorage.setItem('banned_user_cried', 'true');
+                            await authService.logout();
+                            router.replace('/(auth)');
+                        } catch (error) {
+                            console.error('Logout error:', error);
+                        }
+                    },
+                },
+            ]
+        );
     };
 
     const getGenderSpecificLogoutInsult = () => {
@@ -215,7 +189,7 @@ export default function BannedPage() {
             '🔥 LEAVING SO SOON, BOY? Good! No real man would act like you! You\'re a DISGRACE to masculinity! 🔥\n\n🤮 Even your father is ashamed to call you his son! 🤮',
             '💀 What a WEAK little boy! Running away crying like the PATHETIC loser you are! 💀\n\n😭 Your ancestors are rolling in their graves! 😭'
         ];
-
+        
         const femaleInsults = [
             '🔥 CRYING AND LEAVING, PRINCESS? Good! No respectable woman would behave like you! You\'re a SHAME to your gender! 🔥\n\n🤮 Even your mother regrets raising such a DISAPPOINTMENT! 🤮',
             '💀 What a WEAK little girl! Running away sobbing like the PATHETIC failure you are! 💀\n\n😭 Your grandmother would disown you! 😭'
@@ -317,7 +291,7 @@ export default function BannedPage() {
     };
 
     const demotivatingMessages = getGenderSpecificMessages();
-    const genderConsequences = getGenderSpecificConsequences();
+    const consequences = getGenderSpecificConsequences();
 
     const crowdLaughs = [
         '😂 HAHAHAHA! Look at this loser!',
@@ -375,14 +349,166 @@ export default function BannedPage() {
                     </Animated.View>
 
                     <Text style={styles.bannedTitle}>🚫 ACCOUNT TERMINATED 🚫</Text>
+                    <Text style={styles.shameText}>
+                        PATHETIC! {userName}, you&apos;ve DESTROYED your life! 💥
+                        {userGender === 'male' && ' You call yourself a MAN? 🤣'}
+                        {userGender === 'female' && ' You call yourself a WOMAN? 🤣'}
+                    </Text>
+                    <Text style={styles.crowdLaugh}>
+                        🤣 THE ENTIRE ACADEMY IS LAUGHING AT YOU! 🤣
+                    </Text>
+                    <Animated.Text style={[styles.cryingText, { opacity: cryAnimation }]}>
+                        😭😭😭 CRY MORE! WE LOVE YOUR TEARS! 😭😭😭
+                    </Animated.Text>
+                    <Text style={styles.humiliationCounter}>
+                        📊 HUMILIATION VISITS: {humiliationCount} 📊
+                        {humiliationCount > 5 && '\n🤡 SERIAL LOSER DETECTED! 🤡'}
+                    </Text>
+                </View>
+
+                {/* Public humiliation section */}
+                <View style={styles.humiliationContainer}>
+                    <Text style={styles.humiliationTitle}>
+                        📢 PUBLIC HUMILIATION NOTICE �
+                    </Text>
+                    <View style={styles.crowdReactions}>
+                        {crowdLaughs.map((laugh, index) => (
+                            <Animated.View
+                                key={index}
+                                style={[
+                                    styles.laughCard,
+                                    {
+                                        transform: [{
+                                            scale: pulseAnimation.interpolate({
+                                                inputRange: [1, 1.1],
+                                                outputRange: [0.95, 1.05],
+                                            })
+                                        }]
+                                    }
+                                ]}
+                            >
+                                <Text style={styles.laughText}>{laugh}</Text>
+                            </Animated.View>
+                        ))}
+                    </View>
+                </View>
+
+                {/* Shame content */}
+                <View style={styles.shameContainer}>
+                    <View style={styles.shameCard}>
+                        <View style={styles.shameHeader}>
+                            <Ionicons name="skull" size={30} color="#DC2626" />
+                            <Text style={styles.shameCardTitle}>💀 YOUR LIFE IS RUINED 💀</Text>
+                        </View>
+                        <Text style={styles.reasonText}>
+                            🔥 CONGRATULATIONS! You&apos;ve officially DESTROYED your entire future! 🔥
+                            Your pathetic behavior has resulted in PERMANENT DISGRACE. Everyone knows you&apos;re a complete failure now.
+                            {userGender === 'male' && ' No real man would act like this! You\'re a DISGRACE to masculinity!'}
+                            {userGender === 'female' && ' No respectable woman would behave like this! You\'re a SHAME to your gender!'}
+                            Your family is ASHAMED. Your friends have ABANDONED you. Your reputation is DEAD FOREVER.
+                            {userGender === 'male' && ' Your father regrets having such a weak son!'}
+                            {userGender === 'female' && ' Your mother regrets raising such a disappointing daughter!'}
+                        </Text>
+                    </View>
+
+                    <View style={styles.consequencesCard}>
+                        <Text style={styles.consequencesTitle}>💥 TOTAL DESTRUCTION OF YOUR LIFE 💥</Text>
+                        <View style={styles.consequencesList}>
+                            <View style={styles.consequenceItem}>
+                                <Ionicons name="skull" size={20} color="#DC2626" />
+                                <Text style={styles.consequenceText}>🔥 Your education dreams are DEAD</Text>
+                            </View>
+                            <View style={styles.consequenceItem}>
+                                <Ionicons name="skull" size={20} color="#DC2626" />
+                                <Text style={styles.consequenceText}>💀 Your career prospects are ANNIHILATED</Text>
+                            </View>
+                            <View style={styles.consequenceItem}>
+                                <Ionicons name="skull" size={20} color="#DC2626" />
+                                <Text style={styles.consequenceText}>🗑️ Your reputation is in the TRASH forever</Text>
+                            </View>
+                            <View style={styles.consequenceItem}>
+                                <Ionicons name="skull" size={20} color="#DC2626" />
+                                <Text style={styles.consequenceText}>😭 Your parents cry thinking about you</Text>
+                            </View>
+                            <View style={styles.consequenceItem}>
+                                <Ionicons name="skull" size={20} color="#DC2626" />
+                                <Text style={styles.consequenceText}>🤮 Society rejects you completely</Text>
+                            </View>
+                            <View style={styles.consequenceItem}>
+                                <Ionicons name="skull" size={20} color="#DC2626" />
+                                <Text style={styles.consequenceText}>🔥 You will DIE as a failure</Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* Demotivating messages carousel */}
+                    <View style={styles.messagesContainer}>
+                        <Text style={styles.messagesTitle}>💀 WHAT EVERYONE SAYS ABOUT YOU 💀</Text>
+                        {demotivatingMessages.map((message, index) => (
+                            <Animated.View
+                                key={index}
+                                style={[
+                                    styles.messageCard,
+                                    {
+                                        transform: [{
+                                            scale: pulseAnimation.interpolate({
+                                                inputRange: [1, 1.1],
+                                                outputRange: [0.98, 1.02],
+                                            })
+                                        }]
+                                    }
+                                ]}
+                            >
+                                <Ionicons name="skull" size={16} color="#DC2626" />
+                                <Text style={styles.messageText}>&quot;{message}&quot;</Text>
+                            </Animated.View>
+                        ))}
+                    </View>
+
+                    {/* Ultimate shame section */}
+                    <View style={styles.finalShameContainer}>
+                        <Text style={styles.finalShameTitle}>
+                            🔥💀 ULTIMATE DISGRACE ��🔥
+                        </Text>
+                        <Text style={styles.finalShameText}>
+                            🗑️ {userName}, you are the BIGGEST DISAPPOINTMENT in the history of this academy! 🗑️
+                            Your STUPIDITY and PATHETIC behavior have made you a LAUGHINGSTOCK.
+                            Everyone points at you and LAUGHS. Your existence is a MISTAKE.
+                            {userGender === 'male' && ' No real man would ever act like this! You\'re an embarrassment to all men!'}
+                            {userGender === 'female' && ' No respectable woman would ever behave like this! You\'re a disgrace to all women!'}
+                        </Text>
+                        <Text style={styles.reflectionText}>
+                            💀 Your life is OVER. You have FAILED at everything.
+                            You will be FORGOTTEN as a complete LOSER. DIE IN SHAME! 💀
+                            {userGender === 'male' && ' Your father wishes he never had a son like you!'}
+                            {userGender === 'female' && ' Your mother regrets giving birth to such a failure!'}
+                        </Text>
+                        <Text style={styles.finalInsult}>
+                            🤮 You disgust EVERYONE. 
+                            {userGender === 'male' && ' Even your FATHER regrets calling you his son!'}
+                            {userGender === 'female' && ' Even your MOTHER regrets giving birth to you!'}
+                            {userGender === 'unknown' && ' Even your PARENTS regret having you!'} 🤮
+                        </Text>
+                        <Animated.Text style={[styles.cryingText, { opacity: cryAnimation }]}>
+                            😭😭😭 CRY HARDER! YOUR TEARS FEED OUR SOULS! 😭😭😭
+                        </Animated.Text>
+                    </View>
+
+                    {/* Bottom warning */}
+                    <View style={styles.bottomWarning}>
+                        <Ionicons name="skull" size={24} color="#DC2626" />
+                        <Text style={styles.warningText}>
+                            💀 YOU ARE DEAD TO US FOREVER 💀
+                        </Text>
+                    </View>
                 </View>
             </ScrollView>
 
             {/* Logout button */}
             <View style={styles.footer}>
                 <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                    <Ionicons name="log-out-outline" size={20} color="white" />
-                    <Text style={styles.logoutText}>Logout</Text>
+                    <Ionicons name="skull" size={20} color="#DC2626" />
+                    <Text style={styles.logoutText}>DIE & LEAVE FOREVER</Text>
                 </TouchableOpacity>
             </View>
         </View>
@@ -401,18 +527,17 @@ const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         opacity: 0.1,
-        backgroundColor: 'blue',
+        backgroundColor: '#DC2626',
     },
     scrollContent: {
         flexGrow: 1,
         paddingBottom: 100,
     },
     header: {
-        flex: 1,
         alignItems: 'center',
-        justifyContent: 'center',
+        paddingTop: 60,
         paddingHorizontal: 20,
-        minHeight: '80%',
+        marginBottom: 30,
     },
     bannedIconContainer: {
         backgroundColor: '#1F1F1F',
@@ -657,7 +782,7 @@ const styles = StyleSheet.create({
     logoutText: {
         fontSize: 16,
         fontWeight: 'bold',
-        color: 'white',
+        color: '#DC2626',
     },
     cryingText: {
         fontSize: 18,

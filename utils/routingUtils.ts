@@ -96,30 +96,51 @@ export const determineUserRoute = async (userId: string): Promise<string> => {
  */
 export const determineAppRoute = async (): Promise<string> => {
   try {
+    console.log("Determining app route...");
+
     // Check authentication status first
     const isAuthenticated = await authService.isAuthenticated();
+    console.log("Authentication status:", isAuthenticated);
 
     if (isAuthenticated) {
       // User is authenticated - get user session to determine route
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.user) {
-        // Send user directly to their role-based dashboard
-        return await determineUserRoute(session.user.id);
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        console.log("Session check:", !!session?.user);
+
+        if (session?.user) {
+          // Send user directly to their role-based dashboard
+          const route = await determineUserRoute(session.user.id);
+          console.log("Authenticated user route:", route);
+          return route;
+        }
+      } catch (sessionError) {
+        console.error("Error getting session:", sessionError);
+        // Fall through to onboarding check
       }
     }
 
     // Check if user has seen onboarding
-    const hasSeenOnboarding = await authService.hasSeenOnboarding();
+    try {
+      const hasSeenOnboarding = await authService.hasSeenOnboarding();
+      console.log("Has seen onboarding:", hasSeenOnboarding);
 
-    if (!hasSeenOnboarding) {
-      // First time user - show onboarding
+      if (!hasSeenOnboarding) {
+        // First time user - show onboarding
+        console.log("Routing to onboarding");
+        return "/onboarding";
+      }
+
+      // User has seen onboarding but not authenticated - go to auth
+      console.log("Routing to auth");
+      return "/(auth)";
+    } catch (onboardingError) {
+      console.error("Error checking onboarding status:", onboardingError);
+      // Default to onboarding on error
       return "/onboarding";
     }
-
-    // User has seen onboarding but not authenticated - go to auth
-    return "/(auth)";
   } catch (error) {
     console.error("Error determining app route:", error);
     // On error, default to onboarding

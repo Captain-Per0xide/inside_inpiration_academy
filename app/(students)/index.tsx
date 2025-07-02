@@ -246,62 +246,98 @@ const StudentsDashboard = () => {
         setSelectedCourseId(null);
     };
 
-    // Calculate responsive layout
+    // Calculate responsive layout with consistent card sizing
     const getResponsiveLayout = useCallback(() => {
         const { width } = screenData;
 
-        // More responsive breakpoints for better mobile experience
+        // Consistent spacing and sizing for better mobile experience - reduced heights
         if (width < 400) {
             // Very small phones (iPhone SE, etc.)
-            return { numColumns: 1, cardWidth: width - 40, cardPadding: 12 };
+            return {
+                numColumns: 1,
+                cardWidth: width - 32,
+                cardPadding: 16,
+                cardMargin: 8,
+                cardHeight: 240
+            };
         } else if (width < 650) {
             // Small to medium phones (most mobile devices including 720px width)
-            return { numColumns: 1, cardWidth: width - 40, cardPadding: 16 };
+            return {
+                numColumns: 1,
+                cardWidth: width - 32,
+                cardPadding: 16,
+                cardMargin: 8,
+                cardHeight: 250
+            };
         } else if (width < 900) {
             // Large phones/small tablets (landscape phones, iPad mini)
-            return { numColumns: 2, cardWidth: (width - 60) / 2, cardPadding: 16 };
+            return {
+                numColumns: 2,
+                cardWidth: (width - 48) / 2,
+                cardPadding: 16,
+                cardMargin: 8,
+                cardHeight: 260
+            };
         } else if (width < 1200) {
             // Tablets
-            return { numColumns: 2, cardWidth: (width - 80) / 2, cardPadding: 20 };
+            return {
+                numColumns: 2,
+                cardWidth: (width - 64) / 2,
+                cardPadding: 20,
+                cardMargin: 8,
+                cardHeight: 270
+            };
         } else if (width < 1600) {
             // Large tablets/small desktops
-            return { numColumns: 3, cardWidth: (width - 100) / 3, cardPadding: 20 };
+            return {
+                numColumns: 3,
+                cardWidth: (width - 80) / 3,
+                cardPadding: 20,
+                cardMargin: 8,
+                cardHeight: 280
+            };
         } else {
             // Large desktops
-            return { numColumns: 4, cardWidth: (width - 120) / 4, cardPadding: 24 };
+            return {
+                numColumns: 4,
+                cardWidth: (width - 96) / 4,
+                cardPadding: 24,
+                cardMargin: 8,
+                cardHeight: 290
+            };
         }
     }, [screenData]);
 
-    const { numColumns, cardWidth, cardPadding } = getResponsiveLayout();
+    const { numColumns, cardWidth, cardPadding, cardMargin, cardHeight } = getResponsiveLayout();
 
     const renderCourseCard = ({ item }: { item: Course }) => {
         const isVerySmallScreen = screenData.width < 400;
-        const isSmallScreen = screenData.width < 650; // Updated breakpoint to include 720px
-        const isMediumScreen = screenData.width < 900; // Updated breakpoint
+        const isSmallScreen = screenData.width < 650;
+        const isMediumScreen = screenData.width < 900;
         const hasPendingPayment = pendingPayments.has(item.id);
 
-        // Responsive sizing based on screen width
+        // Use consistent sizing from layout calculation
         const cardStyle = {
-            width: numColumns === 1 ? '100%' : cardWidth,
-            minHeight: isVerySmallScreen ? 200 : isSmallScreen ? 220 : isMediumScreen ? 240 : 260,
+            width: numColumns === 1 ? screenData.width - 32 : cardWidth,
+            height: cardHeight,
             padding: cardPadding,
-            margin: isVerySmallScreen ? 4 : isSmallScreen ? 6 : 8,
+            margin: cardMargin,
         };
 
         const textSizes = {
-            codename: isVerySmallScreen ? 10 : isSmallScreen ? 12 : 14,
-            title: isVerySmallScreen ? 16 : isSmallScreen ? 18 : isMediumScreen ? 19 : 20,
-            info: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
-            instructor: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
-            instructorLabel: isVerySmallScreen ? 10 : isSmallScreen ? 12 : 14,
-            button: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
+            codename: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
+            title: isVerySmallScreen ? 18 : isSmallScreen ? 20 : isMediumScreen ? 22 : 24,
+            info: isVerySmallScreen ? 14 : isSmallScreen ? 16 : 18,
+            instructor: isVerySmallScreen ? 14 : isSmallScreen ? 16 : 18,
+            instructorLabel: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
+            button: isVerySmallScreen ? 14 : isSmallScreen ? 16 : 18,
         };
 
         const iconSizes = {
-            courseType: isVerySmallScreen ? 20 : isSmallScreen ? 24 : 26,
-            info: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
-            instructor: isVerySmallScreen ? 32 : isSmallScreen ? 36 : 44,
-            buttonIcon: isVerySmallScreen ? 10 : isSmallScreen ? 12 : 14,
+            courseType: isVerySmallScreen ? 24 : isSmallScreen ? 28 : 30,
+            info: isVerySmallScreen ? 14 : isSmallScreen ? 16 : 18,
+            instructor: isVerySmallScreen ? 36 : isSmallScreen ? 40 : 48,
+            buttonIcon: isVerySmallScreen ? 12 : isSmallScreen ? 14 : 16,
         };
 
         return (
@@ -309,8 +345,8 @@ const StudentsDashboard = () => {
                 styles.courseCard,
                 {
                     backgroundColor: item.full_name_color,
-                    width: numColumns === 1 ? '100%' : cardWidth,
-                    minHeight: cardStyle.minHeight,
+                    width: cardStyle.width,
+                    height: cardStyle.height,
                     padding: cardStyle.padding,
                     margin: cardStyle.margin,
                 }
@@ -340,14 +376,15 @@ const StudentsDashboard = () => {
                     {
                         fontSize: textSizes.title,
                         marginBottom: isVerySmallScreen ? 8 : isSmallScreen ? 12 : 16,
-                        lineHeight: textSizes.title + 4,
+                        lineHeight: textSizes.title + 6,
                     }
                 ]} numberOfLines={isVerySmallScreen ? 2 : 3}>
                     {item.full_name}
                 </Text>
 
                 <View style={[styles.courseInfo, {
-                    marginBottom: isVerySmallScreen ? 8 : isSmallScreen ? 12 : 16
+                    marginBottom: isVerySmallScreen ? 8 : isSmallScreen ? 12 : 16,
+                    flex: 1,
                 }]}>
                     <View style={[styles.infoRow, { marginBottom: isVerySmallScreen ? 6 : 8 }]}>
                         <Ionicons name="time-outline" size={iconSizes.info} color="black" />
@@ -355,7 +392,7 @@ const StudentsDashboard = () => {
                             styles.infoText,
                             {
                                 fontSize: textSizes.info,
-                                lineHeight: textSizes.info + 2,
+                                lineHeight: textSizes.info + 4,
                             }
                         ]}>
                             Duration: {item.course_duration ? `${item.course_duration} months` : 'Ongoing'}
@@ -368,7 +405,7 @@ const StudentsDashboard = () => {
                             styles.infoText,
                             {
                                 fontSize: textSizes.info,
-                                lineHeight: textSizes.info + 2,
+                                lineHeight: textSizes.info + 4,
                             }
                         ]}>
                             {getFeeLabel(item)}: {getFeeDisplay(item)}
@@ -378,10 +415,10 @@ const StudentsDashboard = () => {
                     {!isVerySmallScreen && (
                         <View style={styles.infoRow}>
                             <Text style={{
-                                fontSize: textSizes.info - 2,
+                                fontSize: textSizes.info - 1,
                                 fontWeight: '400',
                                 color: 'black',
-                                lineHeight: textSizes.info,
+                                lineHeight: textSizes.info + 1,
                             }} numberOfLines={isSmallScreen ? 2 : 3}>
                                 Includes 2 eBooks, 2 Notes & 2 Sample Question Set with PYQ solved
                             </Text>
@@ -529,7 +566,10 @@ const StudentsDashboard = () => {
                         keyExtractor={(item) => item.id}
                         numColumns={numColumns}
                         key={numColumns}
-                        columnWrapperStyle={numColumns > 1 ? styles.row : undefined}
+                        columnWrapperStyle={numColumns > 1 ? {
+                            justifyContent: 'space-between',
+                            paddingHorizontal: 8
+                        } : undefined}
                         contentContainerStyle={[
                             styles.coursesListContainer,
                             numColumns === 1 && { alignItems: 'center' }
@@ -645,15 +685,10 @@ const styles = StyleSheet.create({
     },
     coursesListContainer: {
         paddingBottom: 20,
-    },
-    row: {
-        justifyContent: 'space-around',
-        paddingHorizontal: 5,
+        paddingHorizontal: 8,
     },
     // Course Card Styles
     courseCard: {
-        margin: 8,
-        padding: 16,
         borderRadius: 12,
         elevation: 3,
         shadowColor: '#000',
@@ -662,6 +697,9 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         maxWidth: '100%',
         alignSelf: 'stretch',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
     },
     cardHeader: {
         flexDirection: 'row',
