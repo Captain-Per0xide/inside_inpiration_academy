@@ -9,11 +9,13 @@ import {
   Alert,
   Dimensions,
   Image,
+  Linking,
   Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View
 } from "react-native";
@@ -87,6 +89,9 @@ const CourseDetailsPage = () => {
 
   // Schedule class states
   const [showScheduleClassModal, setShowScheduleClassModal] = useState(false);
+  const [showScheduledClassesModal, setShowScheduledClassesModal] = useState(false);
+  const [scheduledClasses, setScheduledClasses] = useState<any[]>([]);
+  const [loadingScheduledClasses, setLoadingScheduledClasses] = useState(false);
   const [classTopicName, setClassTopicName] = useState('');
   const [meetingLink, setMeetingLink] = useState('');
   const [classDate, setClassDate] = useState<Date>(getCurrentDate());
@@ -573,6 +578,272 @@ const CourseDetailsPage = () => {
     setShowDayPicker(null);
   };
 
+  // Function to get the closest scheduled class day
+  const getClosestScheduledDay = () => {
+    const schedules = parseSchedule(course?.class_schedule || '[]');
+    if (schedules.length === 0) return getCurrentDate();
+
+    const today = new Date();
+    const currentDayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+    
+    // Map day names to numbers
+    const dayMap: { [key: string]: number } = {
+      'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
+      'Thursday': 4, 'Friday': 5, 'Saturday': 6
+    };
+
+    // Get all scheduled days as numbers
+    const scheduledDays = schedules.map((schedule: any) => dayMap[schedule.day]).filter((day: any) => day !== undefined);
+    
+    if (scheduledDays.length === 0) return getCurrentDate();
+
+    // Find the next scheduled day
+    let closestDay = scheduledDays[0];
+    let minDiff = 7;
+
+    for (const day of scheduledDays) {
+      let diff = (day - currentDayOfWeek + 7) % 7;
+      if (diff === 0) diff = 7; // If today is a scheduled day, get next occurrence
+      
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestDay = day;
+      }
+    }
+
+    // Calculate the date
+    const closestDate = new Date(today);
+    closestDate.setDate(today.getDate() + minDiff);
+    return closestDate;
+  };
+
+  // Schedule class functions
+  const handleScheduleClass = () => {
+    setShowScheduleClassModal(true);
+    // Pre-fill with closest scheduled day and time
+    const closestDate = getClosestScheduledDay();
+    setClassDate(closestDate);
+    
+    const schedules = parseSchedule(course?.class_schedule || '[]');
+    if (schedules.length > 0) {
+      const currentSchedule = schedules[0];
+      const [hours, minutes] = currentSchedule.startTime.split(':');
+      const prefillTime = new Date();
+      prefillTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+      setClassTime(prefillTime);
+    }
+  };
+
+  const saveScheduledClass = async () => {
+    if (!classTopicName.trim() || !meetingLink.trim()) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    try {
+      setSavingScheduledClass(true);
+
+      if (!course?.id) return;
+
+      // Combine date and time
+      const scheduledDateTime = new Date(classDate);
+      scheduledDateTime.setHours(classTime.getHours(), classTime.getMinutes(), 0, 0);
+
+      // Create new scheduled class object
+      const newScheduledClass = {
+        id: Date.now().toString(), // Simple timestamp ID like in your example
+        topic: classTopicName.trim(),
+        meetingLink: meetingLink.trim(),
+        scheduledDateTime: scheduledDateTime.toISOString(),
+        status: 'scheduled',
+        createdAt: getCurrentISOString(),
+        createdBy: 'admin' // You can get current admin user ID here if needed
+      };
+
+      // Get current scheduled classes
+      const { data: currentCourse, error: fetchError } = await supabase
+        .from('courses')
+        .select('scheduled_classes')
+        .eq('id', course.id)
+        .single();
+
+      if (fetchError) {
+        throw new Error('Failed to fetch current course data');
+      }
+
+      // Add new class to existing scheduled classes
+      const currentScheduledClasses = currentCourse.scheduled_classes || [];
+      const updatedScheduledClasses = [...currentScheduledClasses, newScheduledClass];
+
+      // Update the course in database
+      const { error } = await supabase
+        .from('courses')
+        .update({ scheduled_classes: updatedScheduledClasses })
+        .eq('id', course.id);
+
+      if (error) {
+        throw new Error('Failed to schedule class');
+      }
+
+      // Update local course data
+      setCourse(prev => prev ? { 
+        ...prev, 
+        scheduled_classes: updatedScheduledClasses 
+      } : null);
+
+      // Reset form
+      setClassTopicName('');
+      setMeetingLink('');
+      setClassDate(getCurrentDate());
+      setClassTime(getCurrentDate());
+      setShowScheduleClassModal(false);
+
+      Alert.alert('Success', 'Class scheduled successfully!');
+
+    } catch (error) {
+      console.error('Error scheduling class:', error);
+      Alert.alert('Error', 'Failed to schedule class. Please try again.');
+    } finally {
+      setSavingScheduledClass(false);
+    }
+  };
+
+  const cancelScheduleClass = () => {
+    setShowScheduleClassModal(false);
+    setClassTopicName('');
+    setMeetingLink('');
+    setClassDate(getCurrentDate());
+    setClassTime(getCurrentDate());
+  };
+
+  const handleManageScheduledClasses = async () => {
+    setMenuVisible(false);
+    setShowScheduledClassesModal(true);
+    setLoadingScheduledClasses(true);
+    
+    try {
+      // Fetch the current course data to get scheduled classes
+      const { data: courseData, error } = await supabase
+        .from('courses')
+        .select('scheduled_classes')
+        .eq('id', course?.id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching scheduled classes:', error);
+        Alert.alert('Error', 'Failed to fetch scheduled classes');
+        return;
+      }
+
+      const classes = courseData?.scheduled_classes || [];
+      setScheduledClasses(classes);
+    } catch (error) {
+      console.error('Error:', error);
+      Alert.alert('Error', 'Something went wrong while fetching scheduled classes');
+    } finally {
+      setLoadingScheduledClasses(false);
+    }
+  };
+
+  const handleDeleteScheduledClass = async (classId: string) => {
+    try {
+      // Filter out the class to delete
+      const updatedClasses = scheduledClasses.filter(cls => cls.id !== classId);
+      
+      // Update the database
+      const { error } = await supabase
+        .from('courses')
+        .update({ scheduled_classes: updatedClasses })
+        .eq('id', course?.id);
+
+      if (error) {
+        console.error('Error deleting scheduled class:', error);
+        Alert.alert('Error', 'Failed to delete scheduled class');
+        return;
+      }
+
+      // Update local state
+      setScheduledClasses(updatedClasses);
+      Alert.alert('Success', 'Scheduled class deleted successfully');
+    } catch (error) {
+      console.error('Error:', error);
+      Alert.alert('Error', 'Something went wrong while deleting the class');
+    }
+  };
+
+  const handleToggleClassStatus = async (classId: string) => {
+    try {
+      // Find the current class before updating
+      const currentClass = scheduledClasses.find(cls => cls.id === classId);
+      
+      // Find the class and toggle its status
+      const updatedClasses = scheduledClasses.map(cls => {
+        if (cls.id === classId) {
+          if (cls.status === 'scheduled') {
+            return { ...cls, status: 'live' };
+          } else if (cls.status === 'live') {
+            return { ...cls, status: 'ended' };
+          }
+        }
+        return cls;
+      });
+      
+      // Update the database
+      const { error } = await supabase
+        .from('courses')
+        .update({ scheduled_classes: updatedClasses })
+        .eq('id', course?.id);
+
+      if (error) {
+        console.error('Error updating class status:', error);
+        Alert.alert('Error', 'Failed to update class status');
+        return;
+      }
+
+      // Update local state
+      setScheduledClasses(updatedClasses);
+      
+      const targetClass = updatedClasses.find(cls => cls.id === classId);
+      
+      // If starting a class, redirect to meeting link
+      if (currentClass?.status === 'scheduled' && targetClass?.status === 'live') {
+        Alert.alert('Success', 'Class started successfully. Opening meeting link...', [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (currentClass.meetingLink) {
+                Linking.openURL(currentClass.meetingLink).catch(err => {
+                  console.error('Failed to open meeting link:', err);
+                  Alert.alert('Error', 'Failed to open meeting link. Please copy the link manually.');
+                });
+              }
+            }
+          }
+        ]);
+      } else {
+        const statusMessage = targetClass?.status === 'live' ? 'Class started successfully' : 'Class ended successfully';
+        Alert.alert('Success', statusMessage);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      Alert.alert('Error', 'Something went wrong while updating class status');
+    }
+  };
+
+  const onClassDateChange = (event: any, selectedDate?: Date) => {
+    setShowClassDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setClassDate(selectedDate);
+    }
+  };
+
+  const onClassTimeChange = (event: any, selectedTime?: Date) => {
+    setShowClassTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      setClassTime(selectedTime);
+    }
+  };
+
   if (loading) {
     const isSmallScreen = screenData.width < 600;
 
@@ -653,6 +924,26 @@ const CourseDetailsPage = () => {
                   <View style={styles.dropdownDivider} />
                 </>
               )}
+
+              <TouchableOpacity
+                style={[styles.dropdownItem, { backgroundColor: '#b6d4a9' }]}
+                onPress={handleManageScheduledClasses}
+                activeOpacity={0.8}
+              >
+                <View style={{
+                  width: 28,
+                  height: 28,
+                  backgroundColor: '#059669',
+                  borderRadius: 14,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}>
+                  <Ionicons name="calendar-outline" size={16} color="#fff" />
+                </View>
+                <Text style={[styles.dropdownItemText, { color: '#059669' }]}>Scheduled Classes</Text>
+              </TouchableOpacity>
+
+              <View style={styles.dropdownDivider} />
 
               <TouchableOpacity
                 style={[styles.dropdownItem, { backgroundColor: '#d4a9b6' }]}
@@ -1804,7 +2095,401 @@ const CourseDetailsPage = () => {
             </View>
           </View>
         </Modal>
+
+        {/* Schedule Class Modal */}
+        <Modal
+          visible={showScheduleClassModal}
+          animationType="slide"
+          transparent
+          onRequestClose={cancelScheduleClass}
+        >
+          <View style={scheduleClassStyles.modalOverlay}>
+            <View style={[
+              scheduleClassStyles.modalContent,
+              {
+                maxWidth: screenData.width < 400 ? screenData.width - 32 : 500,
+                width: screenData.width < 400 ? "95%" : "90%",
+              }
+            ]}>
+              {/* Header */}
+              <View style={scheduleClassStyles.header}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[
+                    scheduleClassStyles.modalTitle,
+                    { fontSize: screenData.width < 400 ? 20 : 24 }
+                  ]}>Schedule a Class</Text>
+                  <Text style={{
+                    color: '#9CA3AF',
+                    fontSize: screenData.width < 400 ? 13 : 14,
+                    marginTop: 4,
+                    fontWeight: '500',
+                  }}>Create a new live session for your students</Text>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    scheduleClassStyles.closeButton,
+                    {
+                      width: screenData.width < 400 ? 32 : 36,
+                      height: screenData.width < 400 ? 32 : 36,
+                      borderRadius: screenData.width < 400 ? 16 : 18,
+                    }
+                  ]}
+                  onPress={cancelScheduleClass}
+                >
+                  <Text style={[
+                    scheduleClassStyles.closeButtonText,
+                    { fontSize: screenData.width < 400 ? 18 : 20 }
+                  ]}>×</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Form Content */}
+              <ScrollView
+                style={scheduleClassStyles.formContainer}
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={{
+                  paddingHorizontal: screenData.width < 400 ? 16 : 20
+                }}
+                keyboardShouldPersistTaps="handled"
+              >
+                {/* Topic Name */}
+                <View style={scheduleClassStyles.inputGroup}>
+                  <Text style={[
+                    scheduleClassStyles.label,
+                    { fontSize: screenData.width < 400 ? 14 : 15 }
+                  ]}>Topic Name *</Text>
+                  <TextInput
+                    style={[
+                      scheduleClassStyles.textInput,
+                      { fontSize: screenData.width < 400 ? 15 : 16 }
+                    ]}
+                    value={classTopicName}
+                    onChangeText={setClassTopicName}
+                    placeholder="Enter class topic"
+                    placeholderTextColor="#6B7280"
+                  />
+                </View>
+
+                {/* Meeting Link */}
+                <View style={scheduleClassStyles.inputGroup}>
+                  <Text style={[
+                    scheduleClassStyles.label,
+                    { fontSize: screenData.width < 400 ? 14 : 15 }
+                  ]}>Meeting Link *</Text>
+                  <TextInput
+                    style={[
+                      scheduleClassStyles.textInput,
+                      { fontSize: screenData.width < 400 ? 15 : 16 }
+                    ]}
+                    value={meetingLink}
+                    onChangeText={setMeetingLink}
+                    placeholder="Enter meeting link (Google Meet, Zoom, etc.)"
+                    placeholderTextColor="#6B7280"
+                    autoCapitalize="none"
+                  />
+                </View>
+
+                {/* Date & Time Selection Row */}
+                <View style={scheduleClassStyles.inputGroup}>
+                  <Text style={[
+                    scheduleClassStyles.label,
+                    { fontSize: screenData.width < 400 ? 14 : 15 }
+                  ]}>Schedule Date & Time *</Text>
+                  
+                  <View style={scheduleClassStyles.dateTimeRow}>
+                    {/* Date Selection */}
+                    <TouchableOpacity
+                      style={[scheduleClassStyles.dateTimeButton, { flex: 1.2, marginRight: 12 }]}
+                      onPress={() => setShowClassDatePicker(true)}
+                    >
+                      <Ionicons name="calendar-outline" size={18} color="#9CA3AF" />
+                      <Text style={[
+                        scheduleClassStyles.dateTimeText,
+                        { fontSize: screenData.width < 400 ? 14 : 15 }
+                      ]}>
+                        {classDate.toLocaleDateString('en-GB')} 
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Time Selection */}
+                    <TouchableOpacity
+                      style={[scheduleClassStyles.dateTimeButton, { flex: 1 }]}
+                      onPress={() => setShowClassTimePicker(true)}
+                    >
+                      <Ionicons name="time-outline" size={18} color="#9CA3AF" />
+                      <Text style={[
+                        scheduleClassStyles.dateTimeText,
+                        { fontSize: screenData.width < 400 ? 14 : 15 }
+                      ]}>
+                        {classTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </ScrollView>
+
+              {/* Action Buttons */}
+              <View style={[
+                scheduleClassStyles.actionButtons,
+                {
+                  padding: screenData.width < 400 ? 16 : 20,
+                  gap: screenData.width < 400 ? 12 : 16,
+                }
+              ]}>
+                <TouchableOpacity
+                  style={[
+                    scheduleClassStyles.cancelButton,
+                    {
+                      paddingVertical: screenData.width < 400 ? 14 : 16,
+                    }
+                  ]}
+                  onPress={cancelScheduleClass}
+                >
+                  <Text style={[
+                    scheduleClassStyles.cancelButtonText,
+                    { fontSize: screenData.width < 400 ? 15 : 16 }
+                  ]}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    scheduleClassStyles.saveButton,
+                    savingScheduledClass && scheduleClassStyles.disabledButton,
+                    {
+                      paddingVertical: screenData.width < 400 ? 14 : 16,
+                    }
+                  ]}
+                  onPress={saveScheduledClass}
+                  disabled={savingScheduledClass}
+                >
+                  <Text style={[
+                    scheduleClassStyles.saveButtonText,
+                    { fontSize: screenData.width < 400 ? 15 : 16 }
+                  ]}>
+                    {savingScheduledClass ? "Scheduling..." : "Schedule Class"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Date/Time Pickers */}
+              {showClassDatePicker && (
+                <DateTimePicker
+                  value={classDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={onClassDateChange}
+                  minimumDate={new Date()}
+                />
+              )}
+
+              {showClassTimePicker && (
+                <DateTimePicker
+                  value={classTime}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={onClassTimeChange}
+                />
+              )}
+            </View>
+          </View>
+        </Modal>
+
+        {/* Scheduled Classes Management Modal */}
+        <Modal
+          visible={showScheduledClassesModal}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setShowScheduledClassesModal(false)}
+        >
+          <View style={scheduleClassStyles.modalOverlay}>
+            <View style={[
+              scheduleClassStyles.modalContent,
+              {
+                maxWidth: screenData.width < 400 ? screenData.width - 32 : 500,
+                width: screenData.width < 400 ? "95%" : "90%",
+              }
+            ]}>
+              {/* Header */}
+              <View style={scheduleClassStyles.header}>
+                <Text style={[
+                  scheduleClassStyles.modalTitle,
+                  { fontSize: screenData.width < 400 ? 18 : 20 }
+                ]}>Scheduled Classes</Text>
+                <TouchableOpacity
+                  style={[
+                    scheduleClassStyles.closeButton,
+                    {
+                      width: screenData.width < 400 ? 32 : 36,
+                      height: screenData.width < 400 ? 32 : 36,
+                      borderRadius: screenData.width < 400 ? 16 : 18,
+                    }
+                  ]}
+                  onPress={() => setShowScheduledClassesModal(false)}
+                >
+                  <Text style={[
+                    scheduleClassStyles.closeButtonText,
+                    { fontSize: screenData.width < 400 ? 18 : 20 }
+                  ]}>×</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Content */}
+              <ScrollView
+                style={scheduleClassStyles.formContainer}
+                showsVerticalScrollIndicator={true}
+                contentContainerStyle={{
+                  paddingBottom: 20,
+                  paddingHorizontal: screenData.width < 400 ? 16 : 20
+                }}
+              >
+                {loadingScheduledClasses ? (
+                  <View style={{ padding: 40, alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color="#3B82F6" />
+                    <Text style={{ color: '#9CA3AF', marginTop: 16 }}>Loading scheduled classes...</Text>
+                  </View>
+                ) : scheduledClasses.length === 0 ? (
+                  <View style={{ padding: 40, alignItems: 'center' }}>
+                    <Ionicons name="calendar-outline" size={48} color="#6B7280" />
+                    <Text style={{ color: '#9CA3AF', marginTop: 16, textAlign: 'center' }}>
+                      No scheduled classes found
+                    </Text>
+                    <Text style={{ color: '#6B7280', marginTop: 8, textAlign: 'center' }}>
+                      Use the + button to schedule a new class
+                    </Text>
+                  </View>
+                ) : (
+                  scheduledClasses.map((scheduledClass, index) => (
+                    <View key={scheduledClass.id || index} style={{
+                      backgroundColor: '#374151',
+                      borderRadius: 12,
+                      padding: 16,
+                      marginBottom: 16,
+                      borderWidth: 1,
+                      borderColor: '#4B5563',
+                    }}>
+                      {/* Class Info */}
+                      <View style={{ marginBottom: 12 }}>
+                        <Text style={{ color: '#F9FAFB', fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>
+                          {scheduledClass.topic}
+                        </Text>
+                        
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                          <Ionicons name="calendar-outline" size={16} color="#9CA3AF" />
+                          <Text style={{ color: '#9CA3AF', fontSize: 14, marginLeft: 8 }}>
+                            {new Date(scheduledClass.scheduledDateTime).toLocaleDateString('en-GB')} at {new Date(scheduledClass.scheduledDateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                          </Text>
+                        </View>
+                        
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                          <Ionicons name="link-outline" size={16} color="#9CA3AF" />
+                          <Text style={{ color: '#9CA3AF', fontSize: 14, marginLeft: 8, flex: 1 }} numberOfLines={1}>
+                            {scheduledClass.meetingLink}
+                          </Text>
+                        </View>
+                        
+                        {/* Status Badge */}
+                        <View style={{
+                          backgroundColor: 
+                            scheduledClass.status === 'scheduled' ? '#1E40AF' :
+                            scheduledClass.status === 'live' ? '#10B981' : '#6B7280',
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: 16,
+                          alignSelf: 'flex-start',
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                        }}>
+                          <Ionicons 
+                            name={
+                              scheduledClass.status === 'scheduled' ? 'time-outline' :
+                              scheduledClass.status === 'live' ? 'radio-button-on' : 'checkmark-circle-outline'
+                            } 
+                            size={12} 
+                            color="#fff" 
+                          />
+                          <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginLeft: 6 }}>
+                            {scheduledClass.status === 'scheduled' ? 'Scheduled' :
+                             scheduledClass.status === 'live' ? 'Live' : 'Ended'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Action Buttons */}
+                      <View style={{ flexDirection: 'row', gap: 12 }}>
+                        {/* Delete Button */}
+                        <TouchableOpacity
+                          style={{
+                            flex: 1,
+                            backgroundColor: '#EF4444',
+                            paddingVertical: 12,
+                            paddingHorizontal: 16,
+                            borderRadius: 8,
+                            alignItems: 'center',
+                            flexDirection: 'row',
+                            justifyContent: 'center',
+                          }}
+                          onPress={() => {
+                            Alert.alert(
+                              'Delete Scheduled Class',
+                              'Are you sure you want to delete this scheduled class?',
+                              [
+                                { text: 'Cancel', style: 'cancel' },
+                                { 
+                                  text: 'Delete', 
+                                  style: 'destructive',
+                                  onPress: () => handleDeleteScheduledClass(scheduledClass.id)
+                                }
+                              ]
+                            );
+                          }}
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#fff" />
+                          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', marginLeft: 6 }}>Delete</Text>
+                        </TouchableOpacity>
+
+                        {/* Start/End Button */}
+                        {scheduledClass.status !== 'ended' && (
+                          <TouchableOpacity
+                            style={{
+                              flex: 1,
+                              backgroundColor: scheduledClass.status === 'scheduled' ? '#10B981' : '#F59E0B',
+                              paddingVertical: 12,
+                              paddingHorizontal: 16,
+                              borderRadius: 8,
+                              alignItems: 'center',
+                              flexDirection: 'row',
+                              justifyContent: 'center',
+                            }}
+                            onPress={() => handleToggleClassStatus(scheduledClass.id)}
+                          >
+                            <Ionicons 
+                              name={scheduledClass.status === 'scheduled' ? 'play-outline' : 'stop-outline'} 
+                              size={16} 
+                              color="#fff" 
+                            />
+                            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', marginLeft: 6 }}>
+                              {scheduledClass.status === 'scheduled' ? 'Start Class' : 'End Class'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
       </ScrollView>
+
+      {/* Floating Action Button */}
+      <TouchableOpacity
+        style={styles.floatingActionButton}
+        onPress={handleScheduleClass}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
     </>
   );
 };
@@ -2309,6 +2994,233 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
     maxWidth: 300,
+  },
+  floatingActionButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 30,
+    width: 60,
+    height: 60,
+    borderRadius: 15,
+    backgroundColor: '#FF5734',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+});
+
+const scheduleClassStyles = StyleSheet.create({
+  modal: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#1F2937',
+    padding: 0,
+    borderRadius: 24,
+    width: '100%',
+    maxHeight: '75%',
+    minHeight: '65%',
+    borderWidth: 1,
+    borderColor: '#374151',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#F9FAFB',
+    letterSpacing: -0.5,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#374151',
+    backgroundColor: '#111827',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#374151',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  closeButtonText: {
+    fontSize: 22,
+    color: '#D1D5DB',
+    fontWeight: '700',
+    lineHeight: 22,
+  },
+  formContainer: {
+    flex: 1,
+    padding: 24,
+  },
+  inputContainer: {
+    marginBottom: 24,
+  },
+  inputGroup: {
+    marginBottom: 24,
+  },
+  label: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 12,
+    color: '#F3F4F6',
+    letterSpacing: -0.3,
+  },
+  input: {
+    borderWidth: 2,
+    borderColor: '#4B5563',
+    borderRadius: 16,
+    padding: 18,
+    fontSize: 16,
+    backgroundColor: '#374151',
+    color: '#F9FAFB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    fontWeight: '500',
+  },
+  textInput: {
+    borderWidth: 2,
+    borderColor: '#4B5563',
+    borderRadius: 16,
+    padding: 18,
+    fontSize: 16,
+    backgroundColor: '#374151',
+    color: '#F9FAFB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    fontWeight: '500',
+  },
+  dateTimeButton: {
+    borderWidth: 2,
+    borderColor: '#4B5563',
+    borderRadius: 16,
+    padding: 12,
+    backgroundColor: '#374151',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
+    minHeight: 56,
+  },
+  dateTimeText: {
+    fontSize: 16,
+    color: '#F9FAFB',
+    fontWeight: '600',
+    marginLeft: 12,
+    lineHeight: 20,
+  },
+  dateTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#374151',
+    backgroundColor: '#111827',
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    gap: 16,
+  },
+  button: {
+    flex: 1,
+    padding: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#6B7280',
+    flex: 1,
+    padding: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  saveButton: {
+    backgroundColor: '#FF5734',
+    flex: 1,
+    padding: 18,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#FF5734',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  disabledButton: {
+    opacity: 0.6,
+    shadowOpacity: 0.1,
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#F9FAFB',
+    letterSpacing: -0.2,
+  },
+  saveButtonText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.3,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#F9FAFB',
+    letterSpacing: -0.2,
   },
 });
 

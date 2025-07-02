@@ -753,7 +753,7 @@ const BatchDetailsScreen = () => {
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={handleBack} style={styles.backButtonHeader}>
-                    <Ionicons name="arrow-back" size={24} color="#333" />
+                    <Ionicons name="arrow-back" size={24} color="white" />
                 </TouchableOpacity>
                 <Text
                     style={[
@@ -1209,20 +1209,21 @@ const styles = StyleSheet.create({
     studyMaterialsGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        justifyContent: 'space-between',
+        justifyContent: 'center',
         marginBottom: 24,
+        gap: 20,
     },
     materialCategoryCard: {
         backgroundColor: '#1E293B',
         borderRadius: 16,
         padding: 20,
         alignItems: 'center',
-        width: 200,
+        width: 150,
         height: 180,
         marginBottom: 16,
         borderWidth: 1,
         borderColor: '#334155',
-        justifyContent: 'space-evenly',
+        justifyContent: 'center',
     },
     materialIcon: {
         width: 64,
