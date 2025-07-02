@@ -1,3 +1,5 @@
+import FloatingActionMenu from "@/components/floating-action-menu";
+import VideoUploadModal from "@/components/video-upload-modal";
 import { supabase } from "@/lib/supabase";
 import { getCurrentDate, getCurrentISOString } from "@/utils/testDate";
 import { Ionicons } from "@expo/vector-icons";
@@ -99,6 +101,9 @@ const CourseDetailsPage = () => {
   const [showClassDatePicker, setShowClassDatePicker] = useState(false);
   const [showClassTimePicker, setShowClassTimePicker] = useState(false);
   const [savingScheduledClass, setSavingScheduledClass] = useState(false);
+
+  // Video upload modal state
+  const [showVideoUploadModal, setShowVideoUploadModal] = useState(false);
 
   // Constants for schedule editing
   const daysOfWeek = [
@@ -585,7 +590,7 @@ const CourseDetailsPage = () => {
 
     const today = new Date();
     const currentDayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    
+
     // Map day names to numbers
     const dayMap: { [key: string]: number } = {
       'Sunday': 0, 'Monday': 1, 'Tuesday': 2, 'Wednesday': 3,
@@ -594,7 +599,7 @@ const CourseDetailsPage = () => {
 
     // Get all scheduled days as numbers
     const scheduledDays = schedules.map((schedule: any) => dayMap[schedule.day]).filter((day: any) => day !== undefined);
-    
+
     if (scheduledDays.length === 0) return getCurrentDate();
 
     // Find the next scheduled day
@@ -604,7 +609,7 @@ const CourseDetailsPage = () => {
     for (const day of scheduledDays) {
       let diff = (day - currentDayOfWeek + 7) % 7;
       if (diff === 0) diff = 7; // If today is a scheduled day, get next occurrence
-      
+
       if (diff < minDiff) {
         minDiff = diff;
         closestDay = day;
@@ -623,7 +628,7 @@ const CourseDetailsPage = () => {
     // Pre-fill with closest scheduled day and time
     const closestDate = getClosestScheduledDay();
     setClassDate(closestDate);
-    
+
     const schedules = parseSchedule(course?.class_schedule || '[]');
     if (schedules.length > 0) {
       const currentSchedule = schedules[0];
@@ -686,9 +691,9 @@ const CourseDetailsPage = () => {
       }
 
       // Update local course data
-      setCourse(prev => prev ? { 
-        ...prev, 
-        scheduled_classes: updatedScheduledClasses 
+      setCourse(prev => prev ? {
+        ...prev,
+        scheduled_classes: updatedScheduledClasses
       } : null);
 
       // Reset form
@@ -720,7 +725,7 @@ const CourseDetailsPage = () => {
     setMenuVisible(false);
     setShowScheduledClassesModal(true);
     setLoadingScheduledClasses(true);
-    
+
     try {
       // Fetch the current course data to get scheduled classes
       const { data: courseData, error } = await supabase
@@ -749,7 +754,7 @@ const CourseDetailsPage = () => {
     try {
       // Filter out the class to delete
       const updatedClasses = scheduledClasses.filter(cls => cls.id !== classId);
-      
+
       // Update the database
       const { error } = await supabase
         .from('courses')
@@ -775,7 +780,7 @@ const CourseDetailsPage = () => {
     try {
       // Find the current class before updating
       const currentClass = scheduledClasses.find(cls => cls.id === classId);
-      
+
       // Find the class and toggle its status
       const updatedClasses = scheduledClasses.map(cls => {
         if (cls.id === classId) {
@@ -787,7 +792,7 @@ const CourseDetailsPage = () => {
         }
         return cls;
       });
-      
+
       // Update the database
       const { error } = await supabase
         .from('courses')
@@ -802,9 +807,9 @@ const CourseDetailsPage = () => {
 
       // Update local state
       setScheduledClasses(updatedClasses);
-      
+
       const targetClass = updatedClasses.find(cls => cls.id === classId);
-      
+
       // If starting a class, redirect to meeting link
       if (currentClass?.status === 'scheduled' && targetClass?.status === 'live') {
         Alert.alert('Success', 'Class started successfully. Opening meeting link...', [
@@ -2195,7 +2200,7 @@ const CourseDetailsPage = () => {
                     scheduleClassStyles.label,
                     { fontSize: screenData.width < 400 ? 14 : 15 }
                   ]}>Schedule Date & Time *</Text>
-                  
+
                   <View style={scheduleClassStyles.dateTimeRow}>
                     {/* Date Selection */}
                     <TouchableOpacity
@@ -2207,7 +2212,7 @@ const CourseDetailsPage = () => {
                         scheduleClassStyles.dateTimeText,
                         { fontSize: screenData.width < 400 ? 14 : 15 }
                       ]}>
-                        {classDate.toLocaleDateString('en-GB')} 
+                        {classDate.toLocaleDateString('en-GB')}
                       </Text>
                     </TouchableOpacity>
 
@@ -2372,26 +2377,26 @@ const CourseDetailsPage = () => {
                         <Text style={{ color: '#F9FAFB', fontSize: 18, fontWeight: 'bold', marginBottom: 8 }}>
                           {scheduledClass.topic}
                         </Text>
-                        
+
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                           <Ionicons name="calendar-outline" size={16} color="#9CA3AF" />
                           <Text style={{ color: '#9CA3AF', fontSize: 14, marginLeft: 8 }}>
                             {new Date(scheduledClass.scheduledDateTime).toLocaleDateString('en-GB')} at {new Date(scheduledClass.scheduledDateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })}
                           </Text>
                         </View>
-                        
+
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                           <Ionicons name="link-outline" size={16} color="#9CA3AF" />
                           <Text style={{ color: '#9CA3AF', fontSize: 14, marginLeft: 8, flex: 1 }} numberOfLines={1}>
                             {scheduledClass.meetingLink}
                           </Text>
                         </View>
-                        
+
                         {/* Status Badge */}
                         <View style={{
-                          backgroundColor: 
+                          backgroundColor:
                             scheduledClass.status === 'scheduled' ? '#1E40AF' :
-                            scheduledClass.status === 'live' ? '#10B981' : '#6B7280',
+                              scheduledClass.status === 'live' ? '#10B981' : '#6B7280',
                           paddingHorizontal: 12,
                           paddingVertical: 6,
                           borderRadius: 16,
@@ -2399,17 +2404,17 @@ const CourseDetailsPage = () => {
                           flexDirection: 'row',
                           alignItems: 'center',
                         }}>
-                          <Ionicons 
+                          <Ionicons
                             name={
                               scheduledClass.status === 'scheduled' ? 'time-outline' :
-                              scheduledClass.status === 'live' ? 'radio-button-on' : 'checkmark-circle-outline'
-                            } 
-                            size={12} 
-                            color="#fff" 
+                                scheduledClass.status === 'live' ? 'radio-button-on' : 'checkmark-circle-outline'
+                            }
+                            size={12}
+                            color="#fff"
                           />
                           <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginLeft: 6 }}>
                             {scheduledClass.status === 'scheduled' ? 'Scheduled' :
-                             scheduledClass.status === 'live' ? 'Live' : 'Ended'}
+                              scheduledClass.status === 'live' ? 'Live' : 'Ended'}
                           </Text>
                         </View>
                       </View>
@@ -2434,8 +2439,8 @@ const CourseDetailsPage = () => {
                               'Are you sure you want to delete this scheduled class?',
                               [
                                 { text: 'Cancel', style: 'cancel' },
-                                { 
-                                  text: 'Delete', 
+                                {
+                                  text: 'Delete',
                                   style: 'destructive',
                                   onPress: () => handleDeleteScheduledClass(scheduledClass.id)
                                 }
@@ -2462,10 +2467,10 @@ const CourseDetailsPage = () => {
                             }}
                             onPress={() => handleToggleClassStatus(scheduledClass.id)}
                           >
-                            <Ionicons 
-                              name={scheduledClass.status === 'scheduled' ? 'play-outline' : 'stop-outline'} 
-                              size={16} 
-                              color="#fff" 
+                            <Ionicons
+                              name={scheduledClass.status === 'scheduled' ? 'play-outline' : 'stop-outline'}
+                              size={16}
+                              color="#fff"
                             />
                             <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600', marginLeft: 6 }}>
                               {scheduledClass.status === 'scheduled' ? 'Start Class' : 'End Class'}
@@ -2482,14 +2487,22 @@ const CourseDetailsPage = () => {
         </Modal>
       </ScrollView>
 
-      {/* Floating Action Button */}
-      <TouchableOpacity
-        style={styles.floatingActionButton}
-        onPress={handleScheduleClass}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      {/* Floating Action Menu */}
+      <FloatingActionMenu
+        onScheduleClass={handleScheduleClass}
+        onUploadVideo={() => setShowVideoUploadModal(true)}
+      />
+
+      {/* Video Upload Modal */}
+      <VideoUploadModal
+        visible={showVideoUploadModal}
+        onClose={() => setShowVideoUploadModal(false)}
+        courseId={courseId || ''}
+        onSuccess={() => {
+          // Optionally refresh course data after successful upload
+          fetchCourse();
+        }}
+      />
     </>
   );
 };
@@ -2995,22 +3008,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     maxWidth: 300,
   },
-  floatingActionButton: {
-    position: 'absolute',
-    bottom: 30,
-    right: 30,
-    width: 60,
-    height: 60,
-    borderRadius: 15,
-    backgroundColor: '#FF5734',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
+
 });
 
 const scheduleClassStyles = StyleSheet.create({
