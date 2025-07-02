@@ -1,5 +1,6 @@
 import FloatingActionMenu from "@/components/floating-action-menu";
 import VideoUploadModal from "@/components/video-upload-modal";
+import VideoPlayer from "@/components/VideoPlayer";
 import { supabase } from "@/lib/supabase";
 import { getCurrentDate, getCurrentISOString } from "@/utils/testDate";
 import { Ionicons } from "@expo/vector-icons";
@@ -63,6 +64,20 @@ interface EnrolledStudent {
   status: 'success' | 'pending';
 }
 
+interface RecordedVideo {
+  video_id: string;
+  title: string;
+  description?: string;
+  video_url: string;
+  thumbnail_url?: string;
+  class_notes_url?: string;
+  assignment_url?: string;
+  created_at: string;
+  uploaded_at: string;
+  scheduled_class_id?: string;
+  is_from_scheduled_class: boolean;
+}
+
 const CourseDetailsPage = () => {
   const { courseId } = useLocalSearchParams<{ courseId: string }>();
   const [course, setCourse] = useState<Course | null>(null);
@@ -104,6 +119,10 @@ const CourseDetailsPage = () => {
 
   // Video upload modal state
   const [showVideoUploadModal, setShowVideoUploadModal] = useState(false);
+
+  // Recorded videos state
+  const [recentVideos, setRecentVideos] = useState<RecordedVideo[]>([]);
+  const [videosLoading, setVideosLoading] = useState(false);
 
   // Constants for schedule editing
   const daysOfWeek = [
@@ -218,6 +237,41 @@ const CourseDetailsPage = () => {
     }
   }, [courseId]);
 
+  const fetchRecentVideos = useCallback(async () => {
+    if (!courseId) return;
+
+    try {
+      setVideosLoading(true);
+
+      const { data, error } = await supabase
+        .from("courses")
+        .select("recorded_classes")
+        .eq("id", courseId)
+        .single();
+
+      if (error) {
+        console.error("Error fetching videos:", error);
+        return;
+      }
+
+      const recordedClasses = data?.recorded_classes || [];
+      // Sort by uploaded_at or created_at (newest first) and take only recent 3
+      const sortedVideos = recordedClasses
+        .sort((a: RecordedVideo, b: RecordedVideo) => {
+          const dateA = new Date(a.uploaded_at || a.created_at);
+          const dateB = new Date(b.uploaded_at || b.created_at);
+          return dateB.getTime() - dateA.getTime();
+        })
+        .slice(0, 3); // Take only the 3 most recent videos
+
+      setRecentVideos(sortedVideos);
+    } catch (error) {
+      console.error("Error fetching recent videos:", error);
+    } finally {
+      setVideosLoading(false);
+    }
+  }, [courseId]);
+
   // Function to approve pending student enrollment
   const approveStudentEnrollment = async (studentId: string, studentName: string) => {
     try {
@@ -283,7 +337,8 @@ const CourseDetailsPage = () => {
   useEffect(() => {
     fetchCourse();
     fetchEnrolledStudents();
-  }, [fetchCourse, fetchEnrolledStudents]);
+    fetchRecentVideos();
+  }, [fetchCourse, fetchEnrolledStudents, fetchRecentVideos]);
 
   const handleBack = () => {
     router.back();
@@ -603,7 +658,6 @@ const CourseDetailsPage = () => {
     if (scheduledDays.length === 0) return getCurrentDate();
 
     // Find the next scheduled day
-    let closestDay = scheduledDays[0];
     let minDiff = 7;
 
     for (const day of scheduledDays) {
@@ -612,7 +666,6 @@ const CourseDetailsPage = () => {
 
       if (diff < minDiff) {
         minDiff = diff;
-        closestDay = day;
       }
     }
 
@@ -1085,19 +1138,88 @@ const CourseDetailsPage = () => {
           <View style={styles.sectionHeader}>
             <Ionicons name="play-circle-outline" size={24} color="#2E4064" />
             <Text style={[styles.sectionTitle, { fontSize: isSmallScreen ? 18 : 20 }]}>
-              Course Videos
+              Recent Videos ({recentVideos.length})
             </Text>
+            {recentVideos.length > 0 && (
+              <TouchableOpacity
+                style={styles.viewAllButton}
+                onPress={() => router.push(`/all-videos?courseId=${courseId}&courseName=${encodeURIComponent(course.full_name)}`)}
+              >
+                <Text style={styles.viewAllButtonText}>View All</Text>
+                <Ionicons name="chevron-forward" size={16} color="#3B82F6" />
+              </TouchableOpacity>
+            )}
           </View>
 
-          <View style={styles.videoPlaceholder}>
-            <Ionicons name="videocam-outline" size={60} color="#9CA3AF" />
-            <Text style={[styles.placeholderText, { fontSize: isSmallScreen ? 14 : 16 }]}>
-              Course videos will be available here
-            </Text>
-            <Text style={[styles.placeholderSubtext, { fontSize: isSmallScreen ? 12 : 14 }]}>
-              Backend implementation pending
-            </Text>
-          </View>
+          {videosLoading ? (
+            <View style={styles.videosLoadingContainer}>
+              <ActivityIndicator size="large" color="#3B82F6" />
+              <Text style={[styles.loadingText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                Loading videos...
+              </Text>
+            </View>
+          ) : recentVideos.length === 0 ? (
+            <View style={styles.videoPlaceholder}>
+              <Ionicons name="videocam-outline" size={60} color="#9CA3AF" />
+              <Text style={[styles.placeholderText, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                No videos uploaded yet
+              </Text>
+              <Text style={[styles.placeholderSubtext, { fontSize: isSmallScreen ? 12 : 14 }]}>
+                Use the + button to upload your first recorded class
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.videosContainer}>
+              {recentVideos.map((video, index) => (
+                <View key={video.video_id} style={styles.videoCard}>
+                  <VideoPlayer
+                    videoUrl={video.video_url}
+                    thumbnailUrl={video.thumbnail_url}
+                    title={video.title}
+                    style={styles.videoPlayerCard}
+                  />
+
+                  <View style={styles.videoCardInfo}>
+                    <View style={styles.videoCardHeader}>
+                      <Text style={[styles.videoCardTitle, { fontSize: isSmallScreen ? 14 : 16 }]} numberOfLines={2}>
+                        {video.title}
+                      </Text>
+                      {video.is_from_scheduled_class && (
+                        <View style={styles.scheduledVideoBadge}>
+                          <Ionicons name="calendar" size={10} color="#10B981" />
+                        </View>
+                      )}
+                    </View>
+
+                    {video.description && (
+                      <Text style={[styles.videoCardDescription, { fontSize: isSmallScreen ? 12 : 14 }]} numberOfLines={2}>
+                        {video.description}
+                      </Text>
+                    )}
+
+                    <View style={styles.videoCardMeta}>
+                      <View style={styles.videoCardMetaItem}>
+                        <Ionicons name="calendar-outline" size={12} color="#9CA3AF" />
+                        <Text style={[styles.videoCardMetaText, { fontSize: isSmallScreen ? 11 : 12 }]}>
+                          {new Date(video.uploaded_at || video.created_at).toLocaleDateString('en-GB')}
+                        </Text>
+                      </View>
+                      {(video.class_notes_url || video.assignment_url) && (
+                        <View style={styles.videoCardResources}>
+                          {video.class_notes_url && (
+                            <Ionicons name="document-text" size={12} color="#10B981" />
+                          )}
+                          {video.assignment_url && (
+                            <Ionicons name="document" size={12} color="#F59E0B" />
+                          )}
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
 
         {/* Study Materials Section */}
@@ -2499,8 +2621,9 @@ const CourseDetailsPage = () => {
         onClose={() => setShowVideoUploadModal(false)}
         courseId={courseId || ''}
         onSuccess={() => {
-          // Optionally refresh course data after successful upload
+          // Refresh course data and recent videos after successful upload
           fetchCourse();
+          fetchRecentVideos();
         }}
       />
     </>
@@ -2719,12 +2842,28 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: 16,
   },
   sectionTitle: {
     color: "#fff",
     fontWeight: "bold",
     marginLeft: 12,
+    flex: 1,
+  },
+  viewAllButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1E3A8A",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    gap: 4,
+  },
+  viewAllButtonText: {
+    color: "#3B82F6",
+    fontSize: 14,
+    fontWeight: "600",
   },
   videoPlaceholder: {
     backgroundColor: "#374151",
@@ -3007,6 +3146,74 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 22,
     maxWidth: 300,
+  },
+
+  // Video-related styles
+  videosLoadingContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 40,
+    minHeight: 150,
+  },
+  videosContainer: {
+    gap: 16,
+  },
+  videoCard: {
+    backgroundColor: "#374151",
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#4B5563",
+  },
+  videoPlayerCard: {
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  videoCardInfo: {
+    padding: 16,
+  },
+  videoCardHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  videoCardTitle: {
+    color: "#F9FAFB",
+    fontWeight: "600",
+    flex: 1,
+    marginRight: 8,
+    lineHeight: 20,
+  },
+  scheduledVideoBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#D1FAE5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  videoCardDescription: {
+    color: "#D1D5DB",
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  videoCardMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  videoCardMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  videoCardMetaText: {
+    color: "#9CA3AF",
+  },
+  videoCardResources: {
+    flexDirection: "row",
+    gap: 6,
   },
 
 });
