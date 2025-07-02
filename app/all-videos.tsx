@@ -1,14 +1,16 @@
-import PDFViewerModal from "@/components/PDFViewerModal";
+import PDFViewer from "@/components/PDFViewer";
 import VideoPlayer from "@/components/VideoPlayer";
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, useLocalSearchParams } from "expo-router";
+import * as ScreenOrientation from 'expo-screen-orientation';
 import React, { useCallback, useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
     Dimensions,
     Modal,
+    SafeAreaView,
     ScrollView,
     StyleSheet,
     Text,
@@ -41,9 +43,7 @@ const AllVideosPage = () => {
     const [editTitle, setEditTitle] = useState('');
     const [editDescription, setEditDescription] = useState('');
     const [saving, setSaving] = useState(false);
-    const [showPDFModal, setShowPDFModal] = useState(false);
-    const [currentPDFUrl, setCurrentPDFUrl] = useState('');
-    const [currentPDFTitle, setCurrentPDFTitle] = useState('');
+    const [selectedPDF, setSelectedPDF] = useState<{ url: string; title: string; type: 'notes' | 'assignment' } | null>(null);
 
     useEffect(() => {
         const onChange = (result: { window: any }) => {
@@ -96,8 +96,32 @@ const AllVideosPage = () => {
         fetchVideos();
     }, [fetchVideos]);
 
+    // Handle automatic orientation for PDF viewing
+    useEffect(() => {
+        const handleOrientation = async () => {
+            if (selectedPDF) {
+                // Allow all orientations when PDF is open
+                await ScreenOrientation.unlockAsync();
+            } else {
+                // Lock to portrait when not viewing PDF
+                await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+            }
+        };
+
+        handleOrientation();
+
+        // Cleanup function to reset orientation when component unmounts
+        return () => {
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        };
+    }, [selectedPDF]);
+
     const handleBack = () => {
-        router.back();
+        if (selectedPDF) {
+            setSelectedPDF(null);
+        } else {
+            router.back();
+        }
     };
 
     const handleEditVideo = (video: RecordedVideo) => {
@@ -200,23 +224,65 @@ const AllVideosPage = () => {
         });
     };
 
-    const handleViewPDF = (url: string, title: string) => {
+    const handleViewPDF = (url: string, title: string, type: 'notes' | 'assignment' = 'notes') => {
         if (!url) {
             Alert.alert("Error", "PDF URL not available");
             return;
         }
-        setCurrentPDFUrl(url);
-        setCurrentPDFTitle(title);
-        setShowPDFModal(true);
-    };
-
-    const closePDFModal = () => {
-        setShowPDFModal(false);
-        setCurrentPDFUrl('');
-        setCurrentPDFTitle('');
+        setSelectedPDF({ url, title, type });
     };
 
     const isSmallScreen = screenData.width < 600;
+
+    const renderPDFViewer = () => {
+        if (!selectedPDF) return null;
+
+        // Adjust header padding based on orientation
+        const isLandscape = screenData.width > screenData.height;
+        const headerPaddingTop = isLandscape ? 20 : 50;
+
+        return (
+            <SafeAreaView style={styles.pdfContainer}>
+                <View style={[styles.pdfHeader, { paddingTop: headerPaddingTop }]}>
+                    <TouchableOpacity onPress={handleBack} style={styles.pdfBackButton}>
+                        <Ionicons name="arrow-back" size={24} color="#F8FAFC" />
+                    </TouchableOpacity>
+                    <Text style={styles.pdfTitle} numberOfLines={1}>
+                        {selectedPDF.title}
+                    </Text>
+                    <View style={{ width: 24 }} />
+                </View>
+
+                <PDFViewer
+                    url={selectedPDF.url}
+                    onLoadComplete={(numberOfPages, filePath) => {
+                        console.log(`PDF loaded. Pages: ${numberOfPages}`);
+                    }}
+                    onError={(error) => {
+                        console.error('PDF load error: ', error);
+                        Alert.alert('Error', 'Failed to load PDF. Please try again.');
+                    }}
+                />
+            </SafeAreaView>
+        );
+    };
+
+    // If PDF is selected, show PDF viewer
+    if (selectedPDF) {
+        return (
+            <>
+                <Stack.Screen
+                    options={{
+                        headerShown: false,
+                        statusBarStyle: 'light',
+                        statusBarBackgroundColor: '#1F2937',
+                        statusBarHidden: false,
+                    }}
+                />
+                {renderPDFViewer()}
+            </>
+        );
+    }
 
     if (loading) {
         return (
@@ -340,7 +406,7 @@ const AllVideosPage = () => {
                                                 {video.class_notes_url && (
                                                     <TouchableOpacity
                                                         style={styles.resourceButton}
-                                                        onPress={() => handleViewPDF(video.class_notes_url!, 'Class Notes - ' + video.title)}
+                                                        onPress={() => handleViewPDF(video.class_notes_url!, 'Class Notes - ' + video.title, 'notes')}
                                                     >
                                                         <Ionicons name="document-text" size={16} color="#10B981" />
                                                         <Text style={styles.resourceButtonText}>Class Notes</Text>
@@ -349,7 +415,7 @@ const AllVideosPage = () => {
                                                 {video.assignment_url && (
                                                     <TouchableOpacity
                                                         style={styles.resourceButton}
-                                                        onPress={() => handleViewPDF(video.assignment_url!, 'Assignment - ' + video.title)}
+                                                        onPress={() => handleViewPDF(video.assignment_url!, 'Assignment - ' + video.title, 'assignment')}
                                                     >
                                                         <Ionicons name="document" size={16} color="#F59E0B" />
                                                         <Text style={styles.resourceButtonText}>Assignment</Text>
@@ -450,13 +516,6 @@ const AllVideosPage = () => {
                     </View>
                 </Modal>
 
-                {/* PDF Viewer Modal */}
-                <PDFViewerModal
-                    visible={showPDFModal}
-                    pdfUrl={currentPDFUrl}
-                    title={currentPDFTitle}
-                    onClose={closePDFModal}
-                />
             </View>
         </>
     );
@@ -731,6 +790,36 @@ const styles = StyleSheet.create({
     },
     disabledButton: {
         opacity: 0.6,
+    },
+    // PDF Viewer Styles
+    pdfContainer: {
+        flex: 1,
+        backgroundColor: '#111827',
+    },
+    pdfHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        backgroundColor: '#1F2937',
+        borderBottomWidth: 1,
+        borderBottomColor: '#374151',
+    },
+    pdfBackButton: {
+        padding: 10,
+        borderRadius: 12,
+        backgroundColor: '#374151',
+        borderWidth: 1,
+        borderColor: '#4B5563',
+    },
+    pdfTitle: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#F9FAFB',
+        textAlign: 'center',
+        marginHorizontal: 16,
     },
 });
 

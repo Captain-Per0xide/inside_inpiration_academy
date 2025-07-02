@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import { VideoView, useVideoPlayer } from 'expo-video';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Dimensions,
@@ -12,6 +11,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import Video, { VideoRef } from 'react-native-video';
 
 interface VideoPlayerProps {
     videoUrl: string;
@@ -26,6 +26,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     title,
     style,
 }) => {
+    const videoRef = useRef<VideoRef>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [showControls, setShowControls] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -34,48 +35,21 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [isPlaying, setIsPlaying] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
-
-    const player = useVideoPlayer(videoUrl, (player) => {
-        player.loop = false;
-    });
+    const [isPaused, setIsPaused] = useState(true);
 
     const { width } = Dimensions.get('window');
     const videoHeight = (width * 9) / 16; // 16:9 aspect ratio
 
     useEffect(() => {
-        const subscription = player.addListener('statusChange', (status) => {
-            if (status.status === 'loading') {
-                setIsLoading(true);
-                setError(null);
-            } else if (status.status === 'readyToPlay') {
-                setIsLoading(false);
-                setDuration(player.duration);
-            } else if (status.status === 'error') {
-                setIsLoading(false);
-                setError('Failed to load video');
-            }
-        });
+        // Auto-hide controls after 3 seconds when playing
+        if (showControls && !isPaused && !isLoading) {
+            const timeout = setTimeout(() => {
+                setShowControls(false);
+            }, 3000);
 
-        const timeSubscription = player.addListener('timeUpdate', (time) => {
-            setCurrentTime(time.currentTime);
-        });
-
-        const playingSubscription = player.addListener('playingChange', (payload) => {
-            setIsPlaying(payload.isPlaying);
-        });
-
-        // Listen for orientation changes
-        const orientationSubscription = ScreenOrientation.addOrientationChangeListener((event) => {
-            // We can handle orientation changes here if needed
-        });
-
-        return () => {
-            subscription.remove();
-            timeSubscription.remove();
-            playingSubscription.remove();
-            orientationSubscription.remove();
-        };
-    }, [player]);
+            return () => clearTimeout(timeout);
+        }
+    }, [showControls, isPaused, isLoading]);
 
     const formatTime = (seconds: number) => {
         const totalSeconds = Math.floor(seconds);
@@ -85,17 +59,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
 
     const handlePlayPause = () => {
-        if (isPlaying) {
-            player.pause();
-        } else {
-            player.play();
-        }
+        setIsPaused(!isPaused);
+        setIsPlaying(!isPaused);
     };
 
     const handleSeek = (seekTime: number) => {
-        if (duration > 0) {
+        if (duration > 0 && videoRef.current) {
             const newPosition = Math.max(0, Math.min(seekTime, duration));
-            player.currentTime = newPosition;
+            videoRef.current.seek(newPosition);
+            setCurrentTime(newPosition);
         }
     };
 
@@ -110,8 +82,34 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
 
     const toggleMute = () => {
-        player.muted = !isMuted;
         setIsMuted(!isMuted);
+    };
+
+    // Video event handlers for react-native-video
+    const onLoad = (data: any) => {
+        setDuration(data.duration);
+        setIsLoading(false);
+        setError(null);
+    };
+
+    const onProgress = (data: any) => {
+        setCurrentTime(data.currentTime);
+    };
+
+    const onError = (error: any) => {
+        console.error('Video Error:', error);
+        setError('Failed to load video');
+        setIsLoading(false);
+    };
+
+    const onLoadStart = () => {
+        setIsLoading(true);
+        setError(null);
+    };
+
+    const onEnd = () => {
+        setIsPaused(true);
+        setIsPlaying(false);
     };
 
     const handleFullscreen = async () => {
@@ -148,7 +146,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     onPress={() => {
                         setError(null);
                         setIsLoading(true);
-                        player.replace(videoUrl);
+                        // Force re-render by updating a key or state
+                        setCurrentTime(0);
                     }}
                 >
                     <Text style={styles.retryButtonText}>Retry</Text>
@@ -163,12 +162,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {title && <Text style={styles.title}>{title}</Text>}
 
                 <View style={[styles.videoContainer, { height: videoHeight }]}>
-                    <VideoView
+                    <Video
+                        ref={videoRef}
+                        source={{ uri: videoUrl }}
                         style={styles.video}
-                        player={player}
-                        allowsFullscreen
-                        allowsPictureInPicture
-                        nativeControls={false}
+                        paused={isPaused}
+                        muted={isMuted}
+                        resizeMode="contain"
+                        onLoad={onLoad}
+                        onProgress={onProgress}
+                        onError={onError}
+                        onLoadStart={onLoadStart}
+                        onEnd={onEnd}
+                        controls={false}
+                        poster={thumbnailUrl}
                     />
 
                     {/* Loading Indicator */}
@@ -216,7 +223,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                     onPress={handlePlayPause}
                                 >
                                     <Ionicons
-                                        name={isPlaying ? "pause" : "play"}
+                                        name={isPaused ? "play" : "pause"}
                                         size={40}
                                         color="white"
                                     />
@@ -282,12 +289,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             >
                 <StatusBar hidden />
                 <View style={styles.fullscreenContainer}>
-                    <VideoView
+                    <Video
+                        ref={videoRef}
+                        source={{ uri: videoUrl }}
                         style={styles.fullscreenVideo}
-                        player={player}
-                        allowsFullscreen
-                        allowsPictureInPicture
-                        nativeControls={false}
+                        paused={isPaused}
+                        muted={isMuted}
+                        resizeMode="contain"
+                        onLoad={onLoad}
+                        onProgress={onProgress}
+                        onError={onError}
+                        onLoadStart={onLoadStart}
+                        onEnd={onEnd}
+                        controls={false}
+                        poster={thumbnailUrl}
                     />
 
                     {/* Loading Indicator */}
@@ -337,7 +352,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                     onPress={handlePlayPause}
                                 >
                                     <Ionicons
-                                        name={isPlaying ? "pause" : "play"}
+                                        name={isPaused ? "play" : "pause"}
                                         size={50}
                                         color="white"
                                     />

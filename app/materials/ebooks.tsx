@@ -2,6 +2,7 @@ import PDFViewer from '@/components/PDFViewer';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -94,6 +95,26 @@ const StudentEbooksPage = () => {
         fetchEbooks();
     }, [fetchEbooks]);
 
+    // Handle automatic orientation for PDF viewing
+    useEffect(() => {
+        const handleOrientation = async () => {
+            if (selectedEbook) {
+                // Allow all orientations when PDF is open
+                await ScreenOrientation.unlockAsync();
+            } else {
+                // Lock to portrait when not viewing PDF
+                await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+            }
+        };
+
+        handleOrientation();
+
+        // Cleanup function to reset orientation when component unmounts
+        return () => {
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        };
+    }, [selectedEbook]);
+
     const onRefresh = () => {
         fetchEbooks(true);
     };
@@ -179,11 +200,14 @@ const StudentEbooksPage = () => {
     const renderPDFViewer = () => {
         if (!selectedEbook) return null;
 
+        // Adjust header padding based on orientation
+        const isLandscape = screenData.width > screenData.height;
+        const headerPaddingTop = isLandscape ? 20 : 50;
         const pdfUrl = selectedEbook.file_url;
 
         return (
             <SafeAreaView style={styles.pdfContainer}>
-                <View style={styles.pdfHeader}>
+                <View style={[styles.pdfHeader, { paddingTop: headerPaddingTop }]}>
                     <TouchableOpacity onPress={handleBack} style={styles.backButton}>
                         <Ionicons name="arrow-back" size={24} color="#F8FAFC" />
                     </TouchableOpacity>
@@ -209,7 +233,19 @@ const StudentEbooksPage = () => {
 
 
     if (selectedEbook) {
-        return renderPDFViewer();
+        return (
+            <>
+                <Stack.Screen
+                    options={{
+                        headerShown: false,
+                        statusBarStyle: 'light',
+                        statusBarBackgroundColor: '#1E293B',
+                        statusBarHidden: false,
+                    }}
+                />
+                {renderPDFViewer()}
+            </>
+        );
     }
 
     if (loading) {
@@ -463,7 +499,6 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: 16,
         paddingVertical: 16,
-        paddingTop: 50,
         backgroundColor: '#1E293B',
         borderBottomWidth: 1,
         borderBottomColor: '#334155',

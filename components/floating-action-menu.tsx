@@ -207,8 +207,7 @@ const styles = StyleSheet.create({
         borderRadius: 6,
         overflow: 'hidden',
         textAlign: 'center',
-        minWidth: 80,
-        maxWidth: 120,
+        width: 100,
     },
 });
 

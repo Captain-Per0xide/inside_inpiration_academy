@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import React, { useState } from 'react';
+import React from 'react';
 import {
     Alert,
     Modal,
@@ -25,8 +25,6 @@ const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
     title,
     onClose,
 }) => {
-    const [isFullscreen, setIsFullscreen] = useState(false);
-
     const handleLoadComplete = (numberOfPages: number, filePath: string) => {
         console.log(`PDF loaded: ${numberOfPages} pages`);
     };
@@ -36,120 +34,67 @@ const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
         Alert.alert('Error', 'Failed to load PDF document');
     };
 
-    const handleFullscreen = async () => {
-        try {
-            if (!isFullscreen) {
-                // Enter fullscreen - landscape
-                await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-                setIsFullscreen(true);
-            } else {
-                // Exit fullscreen - portrait
-                await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-                setIsFullscreen(false);
-            }
-        } catch (error) {
-            console.error('Error changing orientation:', error);
+    // Auto-rotate: unlock all orientations when modal opens
+    React.useEffect(() => {
+        if (visible) {
+            // Allow all orientations when PDF is open
+            ScreenOrientation.unlockAsync();
+        } else {
+            // Lock to portrait when not viewing PDF
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
         }
-    };
+    }, [visible]);
 
     const handleClose = async () => {
-        if (isFullscreen) {
-            // Make sure to reset orientation when closing
-            try {
-                await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-            } catch (error) {
-                console.error('Error resetting orientation:', error);
-            }
+        // Reset orientation to portrait when closing
+        try {
+            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        } catch (error) {
+            console.error('Error resetting orientation:', error);
         }
-        setIsFullscreen(false);
         onClose();
     };
 
     return (
-        <>
-            <Modal
-                visible={visible && !isFullscreen}
-                animationType="slide"
-                presentationStyle="fullScreen"
-                onRequestClose={handleClose}
-            >
-                <View style={styles.container}>
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
-                            <Ionicons name="close" size={24} color="#fff" />
-                        </TouchableOpacity>
-                        <View style={styles.titleContainer}>
-                            <Text style={styles.title} numberOfLines={1}>
-                                {title}
-                            </Text>
-                        </View>
-                        <TouchableOpacity style={styles.fullscreenButton} onPress={handleFullscreen}>
-                            <Ionicons name="expand" size={24} color="#fff" />
-                        </TouchableOpacity>
+        <Modal
+            visible={visible}
+            animationType="slide"
+            presentationStyle="fullScreen"
+            supportedOrientations={['landscape', 'portrait']}
+            onRequestClose={handleClose}
+        >
+            <StatusBar hidden />
+            <View style={styles.container}>
+                {/* Header */}
+                <View style={styles.header}>
+                    <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
+                        <Ionicons name="close" size={28} color="#fff" />
+                    </TouchableOpacity>
+                    <View style={styles.titleContainer}>
+                        <Text style={styles.title} numberOfLines={1}>
+                            {title}
+                        </Text>
                     </View>
-
-                    {/* PDF Content */}
-                    <View style={styles.pdfContainer}>
-                        {pdfUrl ? (
-                            <PDFViewer
-                                url={pdfUrl}
-                                onLoadComplete={handleLoadComplete}
-                                onError={handleError}
-                            />
-                        ) : (
-                            <View style={styles.errorContainer}>
-                                <Ionicons name="document-outline" size={64} color="#6B7280" />
-                                <Text style={styles.errorText}>No PDF URL provided</Text>
-                            </View>
-                        )}
-                    </View>
+                    <View style={styles.placeholder} />
                 </View>
-            </Modal>
 
-            {/* Fullscreen Modal */}
-            <Modal
-                visible={visible && isFullscreen}
-                animationType="fade"
-                presentationStyle="fullScreen"
-                supportedOrientations={['landscape', 'portrait']}
-                onRequestClose={handleFullscreen}
-            >
-                <StatusBar hidden />
-                <View style={styles.fullscreenContainer}>
-                    {/* Fullscreen Header */}
-                    <View style={styles.fullscreenHeader}>
-                        <TouchableOpacity style={styles.fullscreenCloseButton} onPress={handleClose}>
-                            <Ionicons name="close" size={28} color="#fff" />
-                        </TouchableOpacity>
-                        <View style={styles.fullscreenTitleContainer}>
-                            <Text style={styles.fullscreenTitle} numberOfLines={1}>
-                                {title}
-                            </Text>
+                {/* PDF Content */}
+                <View style={styles.pdfContainer}>
+                    {pdfUrl ? (
+                        <PDFViewer
+                            url={pdfUrl}
+                            onLoadComplete={handleLoadComplete}
+                            onError={handleError}
+                        />
+                    ) : (
+                        <View style={styles.errorContainer}>
+                            <Ionicons name="document-outline" size={64} color="#6B7280" />
+                            <Text style={styles.errorText}>No PDF URL provided</Text>
                         </View>
-                        <TouchableOpacity style={styles.fullscreenExitButton} onPress={handleFullscreen}>
-                            <Ionicons name="contract" size={28} color="#fff" />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Fullscreen PDF Content */}
-                    <View style={styles.fullscreenPdfContainer}>
-                        {pdfUrl ? (
-                            <PDFViewer
-                                url={pdfUrl}
-                                onLoadComplete={handleLoadComplete}
-                                onError={handleError}
-                            />
-                        ) : (
-                            <View style={styles.errorContainer}>
-                                <Ionicons name="document-outline" size={64} color="#6B7280" />
-                                <Text style={styles.errorText}>No PDF URL provided</Text>
-                            </View>
-                        )}
-                    </View>
+                    )}
                 </View>
-            </Modal>
-        </>
+            </View>
+        </Modal>
     );
 };
 
@@ -162,17 +107,16 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        paddingTop: 50, // Account for status bar
+        paddingHorizontal: 20,
+        paddingVertical: 16,
         backgroundColor: '#1E293B',
         borderBottomWidth: 1,
         borderBottomColor: '#334155',
     },
     closeButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 48,
+        height: 48,
+        borderRadius: 24,
         backgroundColor: '#374151',
         justifyContent: 'center',
         alignItems: 'center',
@@ -183,20 +127,12 @@ const styles = StyleSheet.create({
     },
     title: {
         color: '#F1F5F9',
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '600',
         textAlign: 'center',
     },
     placeholder: {
-        width: 40,
-    },
-    fullscreenButton: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#374151',
-        justifyContent: 'center',
-        alignItems: 'center',
+        width: 48,
     },
     pdfContainer: {
         flex: 1,
@@ -213,51 +149,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         textAlign: 'center',
         marginTop: 16,
-    },
-    // Fullscreen styles
-    fullscreenContainer: {
-        flex: 1,
-        backgroundColor: '#0F172A',
-    },
-    fullscreenHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-        backgroundColor: '#1E293B',
-        borderBottomWidth: 1,
-        borderBottomColor: '#334155',
-    },
-    fullscreenCloseButton: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: '#374151',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    fullscreenTitleContainer: {
-        flex: 1,
-        marginHorizontal: 16,
-    },
-    fullscreenTitle: {
-        color: '#F1F5F9',
-        fontSize: 20,
-        fontWeight: '600',
-        textAlign: 'center',
-    },
-    fullscreenExitButton: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: '#374151',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    fullscreenPdfContainer: {
-        flex: 1,
-        backgroundColor: '#0F172A',
     },
 });
 

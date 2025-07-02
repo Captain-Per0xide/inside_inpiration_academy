@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Alert, Dimensions, StyleSheet, Text, View } from 'react-native';
 import PDF from 'react-native-pdf';
 
@@ -11,6 +11,16 @@ interface PDFViewerProps {
 const PDFViewer = ({ url, onLoadComplete, onError }: PDFViewerProps) => {
     const [currentPage, setCurrentPage] = useState(1);
     const [totalPages, setTotalPages] = useState(0);
+    const [screenData, setScreenData] = useState(Dimensions.get('window'));
+
+    useEffect(() => {
+        const onChange = (result: { window: any, screen: any }) => {
+            setScreenData(result.window);
+        };
+
+        const subscription = Dimensions.addEventListener('change', onChange);
+        return () => subscription?.remove();
+    }, []);
 
     const handleLoadComplete = (numberOfPages: number, filePath: string) => {
         console.log(`PDF loaded. Pages: ${numberOfPages}`);
@@ -32,8 +42,12 @@ const PDFViewer = ({ url, onLoadComplete, onError }: PDFViewerProps) => {
         console.log(`Link pressed: ${uri}`);
     };
 
+    // Calculate if we're in landscape mode
+    const isLandscape = screenData.width > screenData.height;
+    const pageIndicatorHeight = totalPages > 1 ? 50 : 0;
+
     return (
-        <View style={{ flex: 1 }}>
+        <View style={styles.container}>
             {totalPages > 1 && (
                 <View style={styles.pageIndicator}>
                     <Text style={styles.pageText}>
@@ -47,16 +61,19 @@ const PDFViewer = ({ url, onLoadComplete, onError }: PDFViewerProps) => {
                 onPageChanged={handlePageChanged}
                 onError={handleError}
                 onPressLink={handlePressLink}
-                style={styles.pdf}
+                style={[styles.pdf, {
+                    width: screenData.width,
+                    height: screenData.height - pageIndicatorHeight - (isLandscape ? 60 : 100), // Adjust for header
+                }]}
                 trustAllCerts={false}
                 enablePaging={true}
                 spacing={0}
-                minScale={1.0}
-                maxScale={3.0}
-                scale={1.0}
+                minScale={0.25}
+                maxScale={8.0}
+                scale={isLandscape ? 0.8 : 1.0}
                 horizontal={false}
-                showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={false}
+                showsHorizontalScrollIndicator={true}
+                showsVerticalScrollIndicator={true}
                 enableRTL={false}
                 enableDoubleTapZoom={true}
                 singlePage={false}
@@ -66,9 +83,11 @@ const PDFViewer = ({ url, onLoadComplete, onError }: PDFViewerProps) => {
 };
 
 const styles = StyleSheet.create({
-    pdf: {
+    container: {
         flex: 1,
-        width: Dimensions.get('window').width,
+        backgroundColor: '#0F172A',
+    },
+    pdf: {
         backgroundColor: '#0F172A',
     },
     pageIndicator: {

@@ -1,9 +1,25 @@
-import React from 'react';
+import * as ScreenOrientation from 'expo-screen-orientation';
+import React, { useEffect } from 'react';
 import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import PDFViewer from '../components/PDFViewer';
 
 const TestPDFViewer = () => {
     const testPdfUrl = 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+
+    // Handle automatic orientation for PDF viewing
+    useEffect(() => {
+        const handleOrientation = async () => {
+            // Allow all orientations when PDF test component is mounted
+            await ScreenOrientation.unlockAsync();
+        };
+
+        handleOrientation();
+
+        // Cleanup function to reset orientation when component unmounts
+        return () => {
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        };
+    }, []);
 
     return (
         <SafeAreaView style={styles.container}>

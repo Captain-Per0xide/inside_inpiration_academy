@@ -8,7 +8,8 @@ Successfully implemented fullscreen functionality with automatic landscape orien
 
 ### 1. VideoPlayer Component (`components/VideoPlayer.tsx`)
 
-- **Added Dependencies**:
+- **Updated Dependencies**:
+  - Migrated from `expo-video` to `react-native-video` for better compatibility and performance
   - `expo-screen-orientation` for orientation control
   - `Modal` and `StatusBar` from React Native for fullscreen UI
 - **New Features**:
@@ -18,11 +19,12 @@ Successfully implemented fullscreen functionality with automatic landscape orien
   - Larger controls optimized for landscape viewing
   - Automatic return to portrait when exiting fullscreen
 - **Implementation Details**:
-  - `isFullscreen` state to track fullscreen mode
+  - `react-native-video` Video component with custom controls
+  - `isFullscreen` and `isPaused` state management
   - `handleFullscreen()` function with async orientation locking
   - Separate fullscreen modal with enhanced styling
   - Status bar hidden in fullscreen mode
-  - Proper cleanup of orientation listeners
+  - Video event handlers for load, progress, error states
 
 ### 2. PDFViewerModal Component (`components/PDFViewerModal.tsx`)
 
@@ -47,7 +49,7 @@ Successfully implemented fullscreen functionality with automatic landscape orien
 ### 3. Package Dependencies
 
 - **Installed**: `expo-screen-orientation` for screen orientation control
-- **Updated**: Already using `expo-video` (modern replacement for expo-av)
+- **Migrated**: From `expo-video` to `react-native-video` for better compatibility and performance
 
 ## Key Features
 

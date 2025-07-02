@@ -1,6 +1,8 @@
+import PDFViewer from '@/components/PDFViewer';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -18,7 +20,6 @@ import Animated, {
     FadeInDown,
     FadeInUp
 } from 'react-native-reanimated';
-import { WebView } from 'react-native-webview';
 
 interface Note {
     id: string;
@@ -93,6 +94,26 @@ const StudentNotesPage = () => {
     useEffect(() => {
         fetchNotes();
     }, [fetchNotes]);
+
+    // Handle automatic orientation for PDF viewing
+    useEffect(() => {
+        const handleOrientation = async () => {
+            if (selectedNote) {
+                // Allow all orientations when PDF is open
+                await ScreenOrientation.unlockAsync();
+            } else {
+                // Lock to portrait when not viewing PDF
+                await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+            }
+        };
+
+        handleOrientation();
+
+        // Cleanup function to reset orientation when component unmounts
+        return () => {
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        };
+    }, [selectedNote]);
 
     const onRefresh = () => {
         fetchNotes(true);
@@ -179,13 +200,14 @@ const StudentNotesPage = () => {
     const renderPDFViewer = () => {
         if (!selectedNote) return null;
 
+        // Adjust header padding based on orientation
+        const isLandscape = screenData.width > screenData.height;
+        const headerPaddingTop = isLandscape ? 20 : 50;
         const pdfUrl = selectedNote.file_url;
-        // Using Google Docs Viewer for better PDF display
-        const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(pdfUrl)}`;
 
         return (
             <SafeAreaView style={styles.pdfContainer}>
-                <View style={styles.pdfHeader}>
+                <View style={[styles.pdfHeader, { paddingTop: headerPaddingTop }]}>
                     <TouchableOpacity onPress={handleBack} style={styles.backButton}>
                         <Ionicons name="arrow-back" size={24} color="#F8FAFC" />
                     </TouchableOpacity>
@@ -195,32 +217,34 @@ const StudentNotesPage = () => {
                     <View style={{ width: 24 }} />
                 </View>
 
-                <WebView
-                    source={{ uri: viewerUrl }}
-                    style={styles.webview}
-                    startInLoadingState={true}
-                    renderLoading={() => (
-                        <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="large" color="#667EEA" />
-                            <Text style={styles.loadingText}>Loading Notes...</Text>
-                        </View>
-                    )}
-                    onError={(syntheticEvent) => {
-                        const { nativeEvent } = syntheticEvent;
-                        console.error('WebView error: ', nativeEvent);
-                        Alert.alert('Error', 'Failed to load notes. Please try again.');
+                <PDFViewer
+                    url={pdfUrl}
+                    onLoadComplete={(numberOfPages, filePath) => {
+                        console.log(`PDF loaded. Pages: ${numberOfPages}`);
                     }}
-                    javaScriptEnabled={true}
-                    domStorageEnabled={true}
-                    allowsInlineMediaPlayback={true}
-                    mediaCapturePermissionGrantType="grant"
+                    onError={(error) => {
+                        console.error('PDF load error: ', error);
+                        Alert.alert('Error', 'Failed to load PDF. Please try again.');
+                    }}
                 />
             </SafeAreaView>
         );
     };
 
     if (selectedNote) {
-        return renderPDFViewer();
+        return (
+            <>
+                <Stack.Screen
+                    options={{
+                        headerShown: false,
+                        statusBarStyle: 'light',
+                        statusBarBackgroundColor: '#1E293B',
+                        statusBarHidden: false,
+                    }}
+                />
+                {renderPDFViewer()}
+            </>
+        );
     }
 
     if (loading) {
@@ -474,7 +498,6 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         paddingHorizontal: 16,
         paddingVertical: 16,
-        paddingTop: 50,
         backgroundColor: '#1E293B',
         borderBottomWidth: 1,
         borderBottomColor: '#334155',
@@ -493,10 +516,6 @@ const styles = StyleSheet.create({
         color: '#F1F5F9',
         textAlign: 'center',
         marginHorizontal: 16,
-    },
-    webview: {
-        flex: 1,
-        backgroundColor: '#0F172A',
     },
 });
 
