@@ -11,13 +11,24 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import Video, { VideoRef } from 'react-native-video';
+import Video, { OnBufferData, OnPlaybackRateChangeData, VideoRef } from 'react-native-video';
 
 interface VideoPlayerProps {
     videoUrl: string;
     thumbnailUrl?: string;
     title?: string;
     style?: any;
+    // Streaming configuration
+    bufferConfig?: {
+        minBufferMs?: number;
+        maxBufferMs?: number;
+        bufferForPlaybackMs?: number;
+        bufferForPlaybackAfterRebufferMs?: number;
+    };
+    // Adaptive streaming
+    enableAdaptiveStreaming?: boolean;
+    // Preload strategy
+    preloadStrategy?: 'none' | 'metadata' | 'auto';
 }
 
 const VideoPlayer: React.FC<VideoPlayerProps> = ({
@@ -25,6 +36,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     thumbnailUrl,
     title,
     style,
+    bufferConfig = {
+        minBufferMs: 15000,      // 15 seconds minimum buffer
+        maxBufferMs: 30000,      // 30 seconds maximum buffer
+        bufferForPlaybackMs: 2500, // 2.5 seconds to start playback
+        bufferForPlaybackAfterRebufferMs: 5000, // 5 seconds after rebuffering
+    },
+    enableAdaptiveStreaming = true,
+    preloadStrategy = 'metadata',
 }) => {
     const videoRef = useRef<VideoRef>(null);
     const [isLoading, setIsLoading] = useState(true);
@@ -36,6 +55,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [isMuted, setIsMuted] = useState(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [isPaused, setIsPaused] = useState(true);
+    
+    // Streaming-specific states
+    const [isBuffering, setIsBuffering] = useState(false);
+    const [bufferProgress, setBufferProgress] = useState(0);
+    const [playbackRate, setPlaybackRate] = useState(1.0);
+    const [networkQuality, setNetworkQuality] = useState<'good' | 'poor' | 'unknown'>('unknown');
+    const [downloadProgress, setDownloadProgress] = useState(0);
+    
+    // Playback speed states
+    const [showSpeedOptions, setShowSpeedOptions] = useState(false);
+    const playbackSpeeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
     const { width } = Dimensions.get('window');
     const videoHeight = (width * 9) / 16; // 16:9 aspect ratio
@@ -72,39 +102,81 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
 
     const handleForward = () => {
-        const newPosition = Math.min(currentTime + 10, duration); // 10 seconds forward
+        const newPosition = Math.min(currentTime + 10, duration);
         handleSeek(newPosition);
     };
 
     const handleBackward = () => {
-        const newPosition = Math.max(currentTime - 10, 0); // 10 seconds backward
+        const newPosition = Math.max(currentTime - 10, 0);
         handleSeek(newPosition);
     };
 
     const toggleMute = () => {
         setIsMuted(!isMuted);
     };
+    
+    // Handle playback speed change
+    const changePlaybackSpeed = (speed: number) => {
+        setPlaybackRate(speed);
+        setShowSpeedOptions(false);
+    };
+    
+    // Toggle speed options menu
+    const toggleSpeedOptions = () => {
+        setShowSpeedOptions(!showSpeedOptions);
+    };
 
-    // Video event handlers for react-native-video
+    // Enhanced video event handlers with streaming support
     const onLoad = (data: any) => {
         setDuration(data.duration);
         setIsLoading(false);
         setError(null);
+        console.log('Video loaded:', {
+            duration: data.duration,
+            canPlayFast: data.canPlayFast,
+            canPlayReverse: data.canPlayReverse,
+            canStepBackward: data.canStepBackward,
+            canStepForward: data.canStepForward,
+        });
     };
 
     const onProgress = (data: any) => {
         setCurrentTime(data.currentTime);
+        setBufferProgress(data.playableDuration || 0);
+        
+        // Calculate download progress as percentage
+        if (duration > 0) {
+            setDownloadProgress((data.playableDuration || 0) / duration * 100);
+        }
+    };
+
+    const onBuffer = (data: OnBufferData) => {
+        setIsBuffering(data.isBuffering);
+        console.log('Buffer status:', data.isBuffering ? 'Buffering...' : 'Buffer ready');
+    };
+
+    const onPlaybackRateChange = (data: OnPlaybackRateChangeData) => {
+        setPlaybackRate(data.playbackRate);
+        
+        // Detect network quality based on playback rate changes
+        if (data.playbackRate < 1.0) {
+            setNetworkQuality('poor');
+        } else if (data.playbackRate >= 1.0) {
+            setNetworkQuality('good');
+        }
     };
 
     const onError = (error: any) => {
         console.error('Video Error:', error);
         setError('Failed to load video');
         setIsLoading(false);
+        setIsBuffering(false);
     };
 
     const onLoadStart = () => {
         setIsLoading(true);
         setError(null);
+        setIsBuffering(false);
     };
 
     const onEnd = () => {
@@ -112,15 +184,24 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         setIsPlaying(false);
     };
 
+    const onReadyForDisplay = () => {
+        console.log('Video is ready for display');
+        setIsLoading(false);
+    };
+
     const handleFullscreen = async () => {
         try {
             if (!isFullscreen) {
-                // Enter fullscreen - rotate to landscape
+                // Enter fullscreen mode - lock to landscape for immersive experience
                 await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+                // Hide status bar for true fullscreen
+                StatusBar.setHidden(true);
                 setIsFullscreen(true);
             } else {
-                // Exit fullscreen - rotate back to portrait
+                // Exit fullscreen mode - return to portrait
                 await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+                // Show status bar again
+                StatusBar.setHidden(false);
                 setIsFullscreen(false);
             }
         } catch (error) {
@@ -130,10 +211,16 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const toggleControls = () => {
         setShowControls(!showControls);
-        // Auto-hide controls after 3 seconds when playing
         if (isPlaying && showControls) {
             setTimeout(() => setShowControls(false), 3000);
         }
+    };
+
+    // Get streaming quality indicator
+    const getQualityIndicator = () => {
+        if (networkQuality === 'poor') return { color: '#EF4444', text: 'Poor Connection' };
+        if (networkQuality === 'good') return { color: '#10B981', text: 'Good Connection' };
+        return { color: '#6B7280', text: 'Checking...' };
     };
 
     if (error) {
@@ -146,7 +233,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     onPress={() => {
                         setError(null);
                         setIsLoading(true);
-                        // Force re-render by updating a key or state
                         setCurrentTime(0);
                     }}
                 >
@@ -156,6 +242,24 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         );
     }
 
+    const renderBufferingIndicator = () => (
+        <View style={styles.bufferingContainer}>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={styles.bufferingText}>Buffering...</Text>
+            <View style={styles.bufferProgressBar}>
+                <View 
+                    style={[
+                        styles.bufferProgressFill, 
+                        { width: `${downloadProgress}%` }
+                    ]} 
+                />
+            </View>
+            <Text style={styles.bufferProgressText}>
+                {downloadProgress.toFixed(1)}% loaded
+            </Text>
+        </View>
+    );
+
     return (
         <>
             <View style={[styles.container, style]}>
@@ -164,24 +268,40 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <View style={[styles.videoContainer, { height: videoHeight }]}>
                     <Video
                         ref={videoRef}
-                        source={{ uri: videoUrl }}
+                        source={{ 
+                            uri: videoUrl,
+                            // Enhanced streaming configuration
+                            type: 'mp4', // Specify video type for better optimization
+                        }}
                         style={styles.video}
                         paused={isPaused}
                         muted={isMuted}
+                        rate={playbackRate} // Set playback speed
                         resizeMode="contain"
                         onLoad={onLoad}
                         onProgress={onProgress}
+                        onBuffer={onBuffer}
+                        onPlaybackRateChange={onPlaybackRateChange}
                         onError={onError}
                         onLoadStart={onLoadStart}
                         onEnd={onEnd}
+                        onReadyForDisplay={onReadyForDisplay}
                         controls={false}
                         poster={thumbnailUrl}
+                        // Streaming optimizations
+                        bufferConfig={bufferConfig}
+                        maxBitRate={enableAdaptiveStreaming ? 0 : 2000000} // 0 = adaptive, or set max bitrate
+                        progressUpdateInterval={250} // Update progress every 250ms
+                        playInBackground={false}
+                        playWhenInactive={false}
+                        // Preload strategy (not supported by react-native-video)
+                        // preload={preloadStrategy}
                     />
 
-                    {/* Loading Indicator */}
-                    {isLoading && (
+                    {/* Enhanced Loading/Buffering Indicator */}
+                    {(isLoading || isBuffering) && (
                         <View style={styles.loadingOverlay}>
-                            <ActivityIndicator size="large" color="#3B82F6" />
+                            {renderBufferingIndicator()}
                         </View>
                     )}
 
@@ -195,8 +315,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     {/* Controls Overlay */}
                     {showControls && !isLoading && (
                         <View style={styles.controlsOverlay}>
-                            {/* Top Controls */}
+                            {/* Top Controls with streaming info */}
                             <View style={styles.topControls}>
+                                <View style={styles.streamingInfo}>
+                                    <View style={[styles.qualityIndicator, { backgroundColor: getQualityIndicator().color }]} />
+                                    <Text style={styles.qualityText}>{getQualityIndicator().text}</Text>
+                                </View>
                                 <TouchableOpacity
                                     style={styles.fullscreenButton}
                                     onPress={handleFullscreen}
@@ -237,16 +361,30 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 </TouchableOpacity>
                             </View>
 
-                            {/* Bottom Controls */}
+                            {/* Bottom Controls with enhanced progress */}
                             <View style={styles.bottomControls}>
-                                {/* Progress Bar */}
                                 <View style={styles.progressContainer}>
                                     <Text style={styles.timeText}>
                                         {formatTime(currentTime)}
                                     </Text>
 
                                     <View style={styles.progressBarContainer}>
+                                        {/* Background */}
                                         <View style={styles.progressBarBackground} />
+                                        
+                                        {/* Buffer progress */}
+                                        <View
+                                            style={[
+                                                styles.bufferProgressBar,
+                                                {
+                                                    width: duration > 0
+                                                        ? `${(bufferProgress / duration) * 100}%`
+                                                        : '0%',
+                                                },
+                                            ]}
+                                        />
+                                        
+                                        {/* Current progress */}
                                         <View
                                             style={[
                                                 styles.progressBarFill,
@@ -273,21 +411,56 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                             color="white"
                                         />
                                     </TouchableOpacity>
+                                    
+                                    {/* Playback Speed Control */}
+                                    <TouchableOpacity
+                                        style={styles.speedButton}
+                                        onPress={toggleSpeedOptions}
+                                    >
+                                        <Text style={styles.speedButtonText}>{playbackRate}x</Text>
+                                    </TouchableOpacity>
                                 </View>
+                                
+                                {/* Speed Options Menu (shows when speed button is clicked) */}
+                                {showSpeedOptions && (
+                                    <View style={styles.speedOptionsContainer}>
+                                        {playbackSpeeds.map(speed => (
+                                            <TouchableOpacity
+                                                key={`speed-${speed}`}
+                                                style={[
+                                                    styles.speedOption,
+                                                    playbackRate === speed && styles.activeSpeedOption
+                                                ]}
+                                                onPress={() => changePlaybackSpeed(speed)}
+                                            >
+                                                <Text 
+                                                    style={[
+                                                        styles.speedOptionText,
+                                                        playbackRate === speed && styles.activeSpeedOptionText
+                                                    ]}
+                                                >
+                                                    {speed}x
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )}
                             </View>
                         </View>
                     )}
                 </View>
             </View>
 
-            {/* Fullscreen Modal */}
+            {/* Fullscreen Modal - Similar enhancements would be applied here */}
             <Modal
                 visible={isFullscreen}
                 animationType="fade"
                 supportedOrientations={['landscape', 'portrait']}
                 onRequestClose={handleFullscreen}
+                statusBarTranslucent={true}
+                presentationStyle="overFullScreen"
             >
-                <StatusBar hidden />
+                <StatusBar hidden translucent />
                 <View style={styles.fullscreenContainer}>
                     <Video
                         ref={videoRef}
@@ -295,20 +468,27 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         style={styles.fullscreenVideo}
                         paused={isPaused}
                         muted={isMuted}
-                        resizeMode="contain"
+                        rate={playbackRate} // Set playback speed for fullscreen too
+                        resizeMode="cover" // Changed from "contain" to "cover" to fill the screen
                         onLoad={onLoad}
                         onProgress={onProgress}
+                        onBuffer={onBuffer}
+                        onPlaybackRateChange={onPlaybackRateChange}
                         onError={onError}
                         onLoadStart={onLoadStart}
                         onEnd={onEnd}
+                        onReadyForDisplay={onReadyForDisplay}
                         controls={false}
                         poster={thumbnailUrl}
+                        bufferConfig={bufferConfig}
+                        maxBitRate={enableAdaptiveStreaming ? 0 : 2000000}
+                        progressUpdateInterval={250}
                     />
 
-                    {/* Loading Indicator */}
-                    {isLoading && (
+                    {/* Enhanced Loading/Buffering for fullscreen */}
+                    {(isLoading || isBuffering) && (
                         <View style={styles.loadingOverlay}>
-                            <ActivityIndicator size="large" color="#3B82F6" />
+                            {renderBufferingIndicator()}
                         </View>
                     )}
 
@@ -319,7 +499,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         activeOpacity={1}
                     />
 
-                    {/* Fullscreen Controls Overlay */}
+                    {/* Fullscreen Controls - Similar to regular controls */}
                     {showControls && !isLoading && (
                         <View style={styles.fullscreenControlsOverlay}>
                             {/* Top Controls */}
@@ -335,7 +515,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                         {title}
                                     </Text>
                                 )}
-                                <View style={{ width: 40 }} />
+                                <View style={styles.streamingInfo}>
+                                    <View style={[styles.qualityIndicator, { backgroundColor: getQualityIndicator().color }]} />
+                                    <Text style={styles.qualityText}>{getQualityIndicator().text}</Text>
+                                </View>
                             </View>
 
                             {/* Center Controls */}
@@ -377,6 +560,16 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                         <View style={styles.progressBarBackground} />
                                         <View
                                             style={[
+                                                styles.bufferProgressBar,
+                                                {
+                                                    width: duration > 0
+                                                        ? `${(bufferProgress / duration) * 100}%`
+                                                        : '0%',
+                                                },
+                                            ]}
+                                        />
+                                        <View
+                                            style={[
                                                 styles.progressBarFill,
                                                 {
                                                     width: duration > 0
@@ -401,7 +594,40 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                             color="white"
                                         />
                                     </TouchableOpacity>
+                                    
+                                    {/* Fullscreen Playback Speed Control */}
+                                    <TouchableOpacity
+                                        style={styles.fullscreenSpeedButton}
+                                        onPress={toggleSpeedOptions}
+                                    >
+                                        <Text style={styles.fullscreenSpeedButtonText}>{playbackRate}x</Text>
+                                    </TouchableOpacity>
                                 </View>
+                                
+                                {/* Fullscreen Speed Options Menu */}
+                                {showSpeedOptions && (
+                                    <View style={styles.fullscreenSpeedOptionsContainer}>
+                                        {playbackSpeeds.map(speed => (
+                                            <TouchableOpacity
+                                                key={`fullscreen-speed-${speed}`}
+                                                style={[
+                                                    styles.fullscreenSpeedOption,
+                                                    playbackRate === speed && styles.fullscreenActiveSpeedOption
+                                                ]}
+                                                onPress={() => changePlaybackSpeed(speed)}
+                                            >
+                                                <Text 
+                                                    style={[
+                                                        styles.fullscreenSpeedOptionText,
+                                                        playbackRate === speed && styles.fullscreenActiveSpeedOptionText
+                                                    ]}
+                                                >
+                                                    {speed}x
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+                                )}
                             </View>
                         </View>
                     )}
@@ -436,7 +662,32 @@ const styles = StyleSheet.create({
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    },
+    bufferingContainer: {
+        alignItems: 'center',
+    },
+    bufferingText: {
+        color: 'white',
+        fontSize: 16,
+        marginTop: 12,
+        marginBottom: 16,
+    },
+    bufferProgressBar: {
+        height: 4,
+        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        borderRadius: 2,
+        width: 200,
+        marginBottom: 8,
+    },
+    bufferProgressFill: {
+        height: '100%',
+        backgroundColor: '#3B82F6',
+        borderRadius: 2,
+    },
+    bufferProgressText: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        fontSize: 12,
     },
     touchOverlay: {
         ...StyleSheet.absoluteFillObject,
@@ -449,7 +700,27 @@ const styles = StyleSheet.create({
     },
     topControls: {
         flexDirection: 'row',
-        justifyContent: 'flex-end',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    streamingInfo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    qualityIndicator: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 6,
+    },
+    qualityText: {
+        color: 'white',
+        fontSize: 12,
+        fontWeight: '500',
     },
     centerControls: {
         flexDirection: 'row',
@@ -515,6 +786,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         backgroundColor: '#3B82F6',
         borderRadius: 2,
+        zIndex: 2,
     },
     muteButton: {
         width: 32,
@@ -552,9 +824,14 @@ const styles = StyleSheet.create({
     fullscreenContainer: {
         flex: 1,
         backgroundColor: '#000',
+        position: 'relative', // Added positioning context for absolute positioned children
     },
     fullscreenVideo: {
-        flex: 1,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 0,
+        right: 0,
         width: '100%',
         height: '100%',
     },
@@ -634,6 +911,94 @@ const styles = StyleSheet.create({
         marginLeft: 12,
         backgroundColor: 'rgba(0, 0, 0, 0.6)',
         borderRadius: 20,
+    },
+    
+    // Playback speed styles
+    speedButton: {
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: 12,
+        marginLeft: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    speedButtonText: {
+        color: 'white',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    speedOptionsContainer: {
+        position: 'absolute',
+        bottom: 60,
+        right: 20,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        borderRadius: 12,
+        padding: 8,
+        flexDirection: 'column',
+        zIndex: 100,
+    },
+    speedOption: {
+        paddingVertical: 8,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        marginVertical: 2,
+    },
+    activeSpeedOption: {
+        backgroundColor: 'rgba(59, 130, 246, 0.6)',
+    },
+    speedOptionText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '500',
+        textAlign: 'center',
+    },
+    activeSpeedOptionText: {
+        fontWeight: '700',
+    },
+    
+    // Fullscreen playback speed styles
+    fullscreenSpeedButton: {
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 16,
+        marginLeft: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    fullscreenSpeedButtonText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    fullscreenSpeedOptionsContainer: {
+        position: 'absolute',
+        bottom: 80,
+        right: 20,
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        borderRadius: 16,
+        padding: 12,
+        flexDirection: 'column',
+        zIndex: 100,
+    },
+    fullscreenSpeedOption: {
+        paddingVertical: 10,
+        paddingHorizontal: 24,
+        borderRadius: 10,
+        marginVertical: 2,
+    },
+    fullscreenActiveSpeedOption: {
+        backgroundColor: 'rgba(59, 130, 246, 0.6)',
+    },
+    fullscreenSpeedOptionText: {
+        color: 'white',
+        fontSize: 16,
+        fontWeight: '500',
+        textAlign: 'center',
+    },
+    fullscreenActiveSpeedOptionText: {
+        fontWeight: '700',
     },
 });
 
