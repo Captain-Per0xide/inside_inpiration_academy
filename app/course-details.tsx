@@ -1,6 +1,5 @@
 import FloatingActionMenu from "@/components/floating-action-menu";
 import VideoUploadModal from "@/components/video-upload-modal";
-import VideoPlayer from "@/components/VideoPlayer";
 import { supabase } from "@/lib/supabase";
 import { getCurrentDate, getCurrentISOString } from "@/utils/testDate";
 import { Ionicons } from "@expo/vector-icons";
@@ -1172,15 +1171,48 @@ const CourseDetailsPage = () => {
               </Text>
             </View>
           ) : (
-            <View style={styles.videosContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.videosScrollContainer}
+              style={styles.videosContainer}
+            >
               {recentVideos.map((video, index) => (
-                <View key={video.video_id} style={styles.videoCard}>
-                  <VideoPlayer
-                    videoUrl={video.video_url}
-                    thumbnailUrl={video.thumbnail_url}
-                    title={video.title}
-                    style={styles.videoPlayerCard}
-                  />
+                <TouchableOpacity
+                  key={video.video_id}
+                  style={styles.videoCard}
+                  onPress={() => router.push({
+                    pathname: '/all-videos' as any,
+                    params: { courseId, courseName: course.full_name, videoId: video.video_id }
+                  })}
+                  activeOpacity={0.7}
+                >
+                  {/* Video Thumbnail with Play Icon */}
+                  <View style={styles.videoThumbnailContainer}>
+                    {video.thumbnail_url ? (
+                      <Image
+                        source={{ uri: video.thumbnail_url }}
+                        style={styles.videoThumbnail}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.videoThumbnailPlaceholder}>
+                        <Ionicons name="videocam" size={32} color="#9CA3AF" />
+                      </View>
+                    )}
+
+                    {/* Play Button Overlay */}
+                    <View style={styles.playButtonOverlay}>
+                      <View style={styles.playButton}>
+                        <Ionicons name="play" size={20} color="#fff" />
+                      </View>
+                    </View>
+
+                    {/* Video Duration Badge (if available) */}
+                    <View style={styles.durationBadge}>
+                      <Text style={styles.durationText}>Video</Text>
+                    </View>
+                  </View>
 
                   <View style={styles.videoCardInfo}>
                     <View style={styles.videoCardHeader}>
@@ -1219,9 +1251,9 @@ const CourseDetailsPage = () => {
                       )}
                     </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
           )}
         </View>
 
@@ -3171,6 +3203,10 @@ const styles = StyleSheet.create({
     minHeight: 150,
   },
   videosContainer: {
+    paddingHorizontal: 0,
+  },
+  videosScrollContainer: {
+    paddingHorizontal: 20,
     gap: 16,
   },
   videoCard: {
@@ -3179,6 +3215,61 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "#4B5563",
+    width: 280,
+    marginRight: 16,
+  },
+  videoThumbnailContainer: {
+    position: 'relative',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#1F2937',
+  },
+  videoThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  videoThumbnailPlaceholder: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#374151',
+  },
+  playButtonOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+  },
+  playButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(59, 130, 246, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  durationBadge: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  durationText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '500',
   },
   videoPlayerCard: {
     borderTopLeftRadius: 12,

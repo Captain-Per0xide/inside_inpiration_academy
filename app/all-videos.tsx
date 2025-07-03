@@ -1,5 +1,6 @@
 import PDFViewer from "@/components/PDFViewer";
 import VideoPlayer from "@/components/VideoPlayer";
+import YouTubeVideoPlayer from "@/components/YouTubeVideoPlayer";
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack, useLocalSearchParams } from "expo-router";
@@ -34,7 +35,7 @@ interface RecordedVideo {
 }
 
 const AllVideosPage = () => {
-    const { courseId, courseName } = useLocalSearchParams<{ courseId: string; courseName: string }>();
+    const { courseId, courseName, videoId } = useLocalSearchParams<{ courseId: string; courseName: string; videoId?: string }>();
     const [videos, setVideos] = useState<RecordedVideo[]>([]);
     const [loading, setLoading] = useState(true);
     const [screenData, setScreenData] = useState(Dimensions.get("window"));
@@ -42,8 +43,11 @@ const AllVideosPage = () => {
     const [showEditModal, setShowEditModal] = useState(false);
     const [editTitle, setEditTitle] = useState('');
     const [editDescription, setEditDescription] = useState('');
+    const [editClassNotesUrl, setEditClassNotesUrl] = useState('');
+    const [editAssignmentUrl, setEditAssignmentUrl] = useState('');
     const [saving, setSaving] = useState(false);
     const [selectedPDF, setSelectedPDF] = useState<{ url: string; title: string; type: 'notes' | 'assignment' } | null>(null);
+    const [selectedVideo, setSelectedVideo] = useState<RecordedVideo | null>(null);
 
     useEffect(() => {
         const onChange = (result: { window: any }) => {
@@ -96,14 +100,24 @@ const AllVideosPage = () => {
         fetchVideos();
     }, [fetchVideos]);
 
-    // Handle automatic orientation for PDF viewing
+    // Auto-select video if videoId is provided
+    useEffect(() => {
+        if (videoId && videos.length > 0) {
+            const video = videos.find(v => v.video_id === videoId);
+            if (video) {
+                setSelectedVideo(video);
+            }
+        }
+    }, [videoId, videos]);
+
+    // Handle automatic orientation for PDF viewing and video playing
     useEffect(() => {
         const handleOrientation = async () => {
-            if (selectedPDF) {
-                // Allow all orientations when PDF is open
+            if (selectedPDF || selectedVideo) {
+                // Allow all orientations when PDF is open or video is playing
                 await ScreenOrientation.unlockAsync();
             } else {
-                // Lock to portrait when not viewing PDF
+                // Lock to portrait when not viewing PDF or video
                 await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
             }
         };
@@ -114,11 +128,13 @@ const AllVideosPage = () => {
         return () => {
             ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
         };
-    }, [selectedPDF]);
+    }, [selectedPDF, selectedVideo]);
 
     const handleBack = () => {
         if (selectedPDF) {
             setSelectedPDF(null);
+        } else if (selectedVideo) {
+            setSelectedVideo(null);
         } else {
             router.back();
         }
@@ -128,6 +144,8 @@ const AllVideosPage = () => {
         setEditingVideo(video);
         setEditTitle(video.title);
         setEditDescription(video.description || '');
+        setEditClassNotesUrl(video.class_notes_url || '');
+        setEditAssignmentUrl(video.assignment_url || '');
         setShowEditModal(true);
     };
 
@@ -147,6 +165,8 @@ const AllVideosPage = () => {
                         ...video,
                         title: editTitle.trim(),
                         description: editDescription.trim(),
+                        class_notes_url: editClassNotesUrl.trim() || undefined,
+                        assignment_url: editAssignmentUrl.trim() || undefined,
                     };
                 }
                 return video;
@@ -267,6 +287,33 @@ const AllVideosPage = () => {
         );
     };
 
+    // If video is selected, show YouTube-style video player
+    if (selectedVideo) {
+        // Filter out the selected video from suggestions
+        const suggestedVideos = videos.filter(v => v.video_id !== selectedVideo.video_id);
+
+        return (
+            <>
+                <Stack.Screen
+                    options={{
+                        headerShown: false,
+                        statusBarStyle: 'light',
+                        statusBarBackgroundColor: '#1F2937',
+                        statusBarHidden: false,
+                    }}
+                />
+                <YouTubeVideoPlayer
+                    video={selectedVideo}
+                    courseId={courseId}
+                    courseName={courseName || 'Course Videos'}
+                    onBack={() => setSelectedVideo(null)}
+                    suggestedVideos={suggestedVideos}
+                    onVideoSelect={setSelectedVideo}
+                />
+            </>
+        );
+    }
+
     // If PDF is selected, show PDF viewer
     if (selectedPDF) {
         return (
@@ -336,7 +383,12 @@ const AllVideosPage = () => {
                         </View>
                     ) : (
                         videos.map((video, index) => (
-                            <View key={video.video_id} style={styles.videoCard}>
+                            <TouchableOpacity
+                                key={video.video_id}
+                                style={styles.videoCard}
+                                onPress={() => setSelectedVideo(video)}
+                                activeOpacity={0.7}
+                            >
                                 {/* Video Player */}
                                 <VideoPlayer
                                     videoUrl={video.video_url}
@@ -425,7 +477,7 @@ const AllVideosPage = () => {
                                         </View>
                                     )}
                                 </View>
-                            </View>
+                            </TouchableOpacity>
                         ))
                     )}
                 </ScrollView>
@@ -483,6 +535,32 @@ const AllVideosPage = () => {
                                         placeholderTextColor="#9CA3AF"
                                         multiline
                                         numberOfLines={4}
+                                    />
+                                </View>
+
+                                <View style={styles.inputGroup}>
+                                    <Text style={[styles.label, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Class Notes URL
+                                    </Text>
+                                    <TextInput
+                                        style={[styles.input, { fontSize: isSmallScreen ? 14 : 16 }]}
+                                        value={editClassNotesUrl}
+                                        onChangeText={setEditClassNotesUrl}
+                                        placeholder="Enter class notes PDF URL"
+                                        placeholderTextColor="#9CA3AF"
+                                    />
+                                </View>
+
+                                <View style={styles.inputGroup}>
+                                    <Text style={[styles.label, { fontSize: isSmallScreen ? 14 : 16 }]}>
+                                        Assignment URL
+                                    </Text>
+                                    <TextInput
+                                        style={[styles.input, { fontSize: isSmallScreen ? 14 : 16 }]}
+                                        value={editAssignmentUrl}
+                                        onChangeText={setEditAssignmentUrl}
+                                        placeholder="Enter assignment PDF URL"
+                                        placeholderTextColor="#9CA3AF"
                                     />
                                 </View>
                             </ScrollView>

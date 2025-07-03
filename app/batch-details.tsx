@@ -1,5 +1,5 @@
 import PDFViewer from '@/components/PDFViewer';
-import VideoPlayer from '@/components/VideoPlayer';
+import YouTubeVideoPlayer from '@/components/YouTubeVideoPlayer';
 import { supabase } from '@/lib/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
@@ -23,7 +23,6 @@ import {
 import Animated, {
     FadeInDown,
     FadeInUp,
-    FadeOutUp,
     SlideInRight
 } from 'react-native-reanimated';
 
@@ -47,16 +46,6 @@ interface Course {
     sample_questions?: any;
     previous_year_questions?: any;
     scheduled_classes?: any;
-}
-
-interface ScheduledClass {
-    id: string;
-    topic: string;
-    status: 'scheduled' | 'live' | 'completed' | 'cancelled';
-    createdAt: string;
-    createdBy: string;
-    meetingLink: string;
-    scheduledDateTime: string;
 }
 
 interface LiveClass {
@@ -106,7 +95,6 @@ const BatchDetailsScreen = () => {
 
     const [course, setCourse] = useState<Course | null>(null);
     const [liveClasses, setLiveClasses] = useState<LiveClass[]>([]);
-    const [recordedClasses, setRecordedClasses] = useState<LiveClass[]>([]);
     const [recordedVideos, setRecordedVideos] = useState<RecordedVideo[]>([]);
     const [studyMaterials, setStudyMaterials] = useState<StudyMaterial[]>([]);
     const [loading, setLoading] = useState(true);
@@ -115,15 +103,15 @@ const BatchDetailsScreen = () => {
     const [activeTab, setActiveTab] = useState<'classes' | 'recorded' | 'materials'>('classes');
     const [sortOrder, setSortOrder] = useState<'oldest' | 'newest'>('oldest');
     const [selectedPDF, setSelectedPDF] = useState<{ url: string; title: string; type: 'notes' | 'assignment' } | null>(null);
-    const [expandedVideos, setExpandedVideos] = useState<Set<string>>(new Set());
+    const [selectedVideo, setSelectedVideo] = useState<RecordedVideo | null>(null);
 
     useEffect(() => {
         const onChange = (result: { window: any }) => {
             setScreenData(result.window);
             // Log orientation changes for debugging
             const isLandscape = result.window.width > result.window.height;
-            console.log('Orientation changed:', isLandscape ? 'Landscape' : 'Portrait', 
-                       `${result.window.width}x${result.window.height}`);
+            console.log('Orientation changed:', isLandscape ? 'Landscape' : 'Portrait',
+                `${result.window.width}x${result.window.height}`);
         };
 
         const subscription = Dimensions.addEventListener('change', onChange);
@@ -132,11 +120,11 @@ const BatchDetailsScreen = () => {
 
     // Screen orientation effect for PDF viewing
     useEffect(() => {
-        if (selectedPDF) {
-            // Allow all orientations when viewing PDF, don't lock to landscape
+        if (selectedPDF || selectedVideo) {
+            // Allow all orientations when viewing PDF or video
             ScreenOrientation.unlockAsync();
         } else {
-            // Allow all orientations when not viewing PDF
+            // Allow all orientations when not viewing PDF or video
             ScreenOrientation.unlockAsync();
         }
 
@@ -144,7 +132,7 @@ const BatchDetailsScreen = () => {
             // Cleanup: unlock orientation when component unmounts
             ScreenOrientation.unlockAsync();
         };
-    }, [selectedPDF]);
+    }, [selectedPDF, selectedVideo]);
 
     // Additional orientation listener specifically for PDF viewer
     useEffect(() => {
@@ -170,6 +158,10 @@ const BatchDetailsScreen = () => {
                 setSelectedPDF(null);
                 return true; // Prevent default behavior
             }
+            if (selectedVideo) {
+                setSelectedVideo(null);
+                return true; // Prevent default behavior
+            }
             return false; // Allow default behavior
         };
 
@@ -179,12 +171,14 @@ const BatchDetailsScreen = () => {
         );
 
         return () => backHandler.remove();
-    }, [selectedPDF]);
+    }, [selectedPDF, selectedVideo]);
 
     const handleBack = () => {
-        console.log('handleBack called, selectedPDF:', selectedPDF ? 'exists' : 'null');
+        console.log('handleBack called, selectedPDF:', selectedPDF ? 'exists' : 'null', 'selectedVideo:', selectedVideo ? 'exists' : 'null');
         if (selectedPDF) {
             setSelectedPDF(null);
+        } else if (selectedVideo) {
+            setSelectedVideo(null);
         } else {
             router.back();
         }
@@ -201,16 +195,6 @@ const BatchDetailsScreen = () => {
             return;
         }
         setSelectedPDF({ url, title, type });
-    };
-
-    const toggleVideoExpansion = (videoId: string) => {
-        const newExpandedVideos = new Set(expandedVideos);
-        if (newExpandedVideos.has(videoId)) {
-            newExpandedVideos.delete(videoId);
-        } else {
-            newExpandedVideos.add(videoId);
-        }
-        setExpandedVideos(newExpandedVideos);
     };
 
     const fetchBatchDetails = useCallback(async (isRefresh = false) => {
@@ -238,7 +222,7 @@ const BatchDetailsScreen = () => {
 
             // Parse scheduled classes from course data
             const scheduledClasses: LiveClass[] = [];
-            
+
             if (courseData.scheduled_classes) {
                 const classes = Array.isArray(courseData.scheduled_classes) ? courseData.scheduled_classes : [];
                 classes.forEach((scheduledClass: any) => {
@@ -247,7 +231,7 @@ const BatchDetailsScreen = () => {
                         const scheduledDateTime = new Date(scheduledClass.scheduledDateTime);
                         const scheduledDate = scheduledDateTime.toISOString().split('T')[0];
                         const scheduledTime = scheduledDateTime.toTimeString().split(' ')[0].substring(0, 5);
-                        
+
                         scheduledClasses.push({
                             id: scheduledClass.id,
                             title: scheduledClass.topic,
@@ -273,7 +257,7 @@ const BatchDetailsScreen = () => {
                         const scheduledDateTime = new Date(scheduledClass.scheduledDateTime);
                         const scheduledDate = scheduledDateTime.toISOString().split('T')[0];
                         const scheduledTime = scheduledDateTime.toTimeString().split(' ')[0].substring(0, 5);
-                        
+
                         allCompletedClasses.push({
                             id: scheduledClass.id,
                             title: scheduledClass.topic,
@@ -287,7 +271,6 @@ const BatchDetailsScreen = () => {
                     }
                 });
             }
-            setRecordedClasses(allCompletedClasses);
 
             // Parse recorded videos from recorded_classes column
             const videos: RecordedVideo[] = [];
@@ -309,14 +292,14 @@ const BatchDetailsScreen = () => {
                     });
                 });
             }
-            
+
             // Sort videos by oldest first (default)
             const sortedVideos = videos.sort((a, b) => {
                 const dateA = new Date(a.uploaded_at || a.created_at).getTime();
                 const dateB = new Date(b.uploaded_at || b.created_at).getTime();
                 return dateA - dateB;
             });
-            
+
             setRecordedVideos(sortedVideos);
 
             // Parse study materials from course JSONB data
@@ -424,7 +407,7 @@ const BatchDetailsScreen = () => {
         const classTime = new Date(scheduledDateTime);
         const oneDayInMs = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
         const timeDifference = currentTime.getTime() - classTime.getTime();
-        
+
         // Show classes that are:
         // - Upcoming (negative timeDifference)
         // - Currently happening
@@ -533,7 +516,7 @@ const BatchDetailsScreen = () => {
         const sorted = [...recordedVideos].sort((a, b) => {
             const dateA = new Date(a.uploaded_at || a.created_at).getTime();
             const dateB = new Date(b.uploaded_at || b.created_at).getTime();
-            
+
             return sortOrder === 'oldest' ? dateA - dateB : dateB - dateA;
         });
         return sorted;
@@ -591,7 +574,7 @@ const BatchDetailsScreen = () => {
                         <Text style={styles.joinButtonText}>Join Class</Text>
                     </TouchableOpacity>
                 )}
-                
+
                 {item.status === 'scheduled' && (
                     <TouchableOpacity
                         style={[styles.joinButton, { backgroundColor: '#6B7280' }]}
@@ -691,119 +674,101 @@ const BatchDetailsScreen = () => {
 
     const renderRecordedVideoItem = ({ item }: { item: RecordedVideo }) => {
         const isSmallScreen = screenData.width < 600;
-        const isExpanded = expandedVideos.has(item.video_id);
 
         return (
-            <View style={styles.videoCard}>
-                {/* Video Header - Always Visible */}
-                <TouchableOpacity 
-                    style={styles.videoHeader}
-                    onPress={() => toggleVideoExpansion(item.video_id)}
-                    activeOpacity={0.7}
-                >
-                    <View style={styles.videoHeaderContent}>
-                        <View style={styles.videoHeaderLeft}>
-                            <Text style={[styles.videoCardTitle, { fontSize: isSmallScreen ? 14 : 16 }]} numberOfLines={2}>
+            <TouchableOpacity
+                style={styles.videoCard}
+                onPress={() => setSelectedVideo(item)}
+                activeOpacity={0.7}
+            >
+                {/* Video Info Card */}
+                <View style={styles.videoInfo}>
+                    <View style={styles.videoPlayerHeader}>
+                        <View style={styles.videoTitleContainer}>
+                            <Text style={[styles.videoTitle, { fontSize: isSmallScreen ? 16 : 18 }]}>
                                 {item.title}
                             </Text>
-                            {item.description && (
-                                <Text style={[styles.videoCardDescription, { fontSize: isSmallScreen ? 12 : 14 }]} numberOfLines={1}>
-                                    {item.description}
-                                </Text>
-                            )}
-                        </View>
-                        <View style={styles.videoHeaderRight}>
                             {item.is_from_scheduled_class && (
-                                <View style={styles.scheduledVideoBadge}>
-                                    <Ionicons name="calendar" size={10} color="#10B981" />
+                                <View style={styles.scheduledBadge}>
+                                    <Ionicons name="calendar" size={12} color="#10B981" />
+                                    <Text style={styles.scheduledBadgeText}>Scheduled Class</Text>
                                 </View>
                             )}
-                            <Ionicons 
-                                name={isExpanded ? "chevron-up" : "chevron-down"} 
-                                size={20} 
-                                color="#94A3B8" 
-                            />
+                        </View>
+                        <View style={styles.playIconContainer}>
+                            <Ionicons name="play-circle" size={32} color="#3B82F6" />
                         </View>
                     </View>
 
-                    {/* Date and Upload Info */}
-                    <View style={styles.videoMetaInfo}>
-                        <View style={styles.videoMetaItem}>
+                    {item.description && (
+                        <Text style={[styles.videoDescription, { fontSize: isSmallScreen ? 14 : 15 }]}>
+                            {item.description}
+                        </Text>
+                    )}
+
+                    <View style={styles.videoMeta}>
+                        <View style={styles.metaItem}>
                             <Ionicons name="calendar-outline" size={14} color="#9CA3AF" />
-                            <Text style={[styles.videoMetaText, { fontSize: isSmallScreen ? 12 : 13 }]}>
-                                {new Date(item.uploaded_at || item.created_at).toLocaleDateString('en-GB')} at {new Date(item.uploaded_at || item.created_at).toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit' })}
+                            <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 13 }]}>
+                                Uploaded: {new Date(item.uploaded_at || item.created_at).toLocaleDateString('en-GB', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                })}
                             </Text>
                         </View>
-                        {item.is_from_scheduled_class && item.scheduled_class_id && (
-                            <View style={styles.videoMetaItem}>
-                                <Ionicons name="link-outline" size={14} color="#10B981" />
-                                <Text style={[styles.videoMetaText, { fontSize: isSmallScreen ? 11 : 12 }]}>
-                                    Class Recording
-                                </Text>
-                            </View>
-                        )}
-                        {(item.class_notes_url || item.assignment_url) && (
-                            <View style={styles.videoResourceIndicators}>
+                        <View style={styles.metaItem}>
+                            <Ionicons name="key-outline" size={14} color="#9CA3AF" />
+                            <Text style={[styles.metaText, { fontSize: isSmallScreen ? 12 : 13 }]}>
+                                ID: {item.video_id}
+                            </Text>
+                        </View>
+                    </View>
+
+                    {/* Additional Resources */}
+                    {(item.class_notes_url || item.assignment_url) && (
+                        <View style={styles.resourcesContainer}>
+                            <Text style={[styles.resourcesTitle, { fontSize: isSmallScreen ? 14 : 15 }]}>
+                                Resources:
+                            </Text>
+                            <View style={styles.resourcesList}>
                                 {item.class_notes_url && (
-                                    <Ionicons name="document-text" size={14} color="#10B981" />
+                                    <TouchableOpacity
+                                        style={styles.resourceButton}
+                                        onPress={(e) => {
+                                            e.stopPropagation();
+                                            handleViewPDF(item.class_notes_url!, 'Class Notes - ' + item.title, 'notes');
+                                        }}
+                                    >
+                                        <Ionicons name="document-text" size={16} color="#10B981" />
+                                        <Text style={styles.resourceButtonText}>Class Notes</Text>
+                                    </TouchableOpacity>
                                 )}
                                 {item.assignment_url && (
-                                    <Ionicons name="document" size={14} color="#F59E0B" />
+                                    <TouchableOpacity
+                                        style={styles.resourceButton}
+                                        onPress={(e) => {
+                                            e.stopPropagation();
+                                            handleViewPDF(item.assignment_url!, 'Assignment - ' + item.title, 'assignment');
+                                        }}
+                                    >
+                                        <Ionicons name="document" size={16} color="#F59E0B" />
+                                        <Text style={styles.resourceButtonText}>Assignment</Text>
+                                    </TouchableOpacity>
                                 )}
-                                <Text style={[styles.resourceIndicatorText, { fontSize: isSmallScreen ? 11 : 12 }]}>
-                                    Resources available
-                                </Text>
                             </View>
-                        )}
+                        </View>
+                    )}
+
+                    {/* Click to play indicator */}
+                    <View style={styles.clickToPlayContainer}>
+                        <Ionicons name="play" size={16} color="#3B82F6" />
+                        <Text style={styles.clickToPlayText}>Tap to watch video</Text>
                     </View>
-                </TouchableOpacity>
-
-                {/* Expanded Content - Video Player and Resources */}
-                {isExpanded && (
-                    <Animated.View 
-                        entering={FadeInDown.duration(300).springify()}
-                        exiting={FadeOutUp.duration(200)}
-                        style={styles.videoExpandedContent}
-                    >
-                        {/* Video Player */}
-                        <VideoPlayer
-                            videoUrl={item.video_url}
-                            thumbnailUrl={item.thumbnail_url}
-                            title=""
-                            style={styles.videoPlayerCard}
-                        />
-
-                        {/* Resources Section */}
-                        {(item.class_notes_url || item.assignment_url) && (
-                            <View style={styles.resourcesSection}>
-                                <Text style={[styles.resourcesSectionTitle, { fontSize: isSmallScreen ? 14 : 15 }]}>
-                                    Resources:
-                                </Text>
-                                <View style={styles.resourceButtonsContainer}>
-                                    {item.class_notes_url && (
-                                        <TouchableOpacity
-                                            style={styles.resourceActionButton}
-                                            onPress={() => handleViewPDF(item.class_notes_url!, 'Class Notes - ' + item.title, 'notes')}
-                                        >
-                                            <Ionicons name="document-text" size={18} color="#10B981" />
-                                            <Text style={styles.resourceActionButtonText}>Class Notes</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                    {item.assignment_url && (
-                                        <TouchableOpacity
-                                            style={styles.resourceActionButton}
-                                            onPress={() => handleViewPDF(item.assignment_url!, 'Assignment - ' + item.title, 'assignment')}
-                                        >
-                                            <Ionicons name="document" size={18} color="#F59E0B" />
-                                            <Text style={styles.resourceActionButtonText}>Assignment</Text>
-                                        </TouchableOpacity>
-                                    )}
-                                </View>
-                            </View>
-                        )}
-                    </Animated.View>
-                )}
-            </View>
+                </View>
+            </TouchableOpacity>
         );
     };
 
@@ -976,19 +941,19 @@ const BatchDetailsScreen = () => {
         return (
             <View style={styles.pdfContainer}>
                 <View style={[
-                    styles.pdfHeader, 
-                    { 
+                    styles.pdfHeader,
+                    {
                         paddingTop: headerPaddingTop,
                         minHeight: headerHeight,
                         paddingHorizontal: isLandscape ? 16 : 20,
                         paddingBottom: isLandscape ? 12 : 16
                     }
                 ]}>
-                    <TouchableOpacity 
-                        onPress={handlePDFBack} 
+                    <TouchableOpacity
+                        onPress={handlePDFBack}
                         style={[
                             styles.pdfBackButton,
-                            { 
+                            {
                                 minWidth: isLandscape ? 40 : 48,
                                 minHeight: isLandscape ? 40 : 48,
                                 padding: isLandscape ? 8 : 12
@@ -1001,8 +966,8 @@ const BatchDetailsScreen = () => {
                     </TouchableOpacity>
                     <View style={styles.pdfTitleContainer}>
                         <Text style={[
-                            styles.pdfTitle, 
-                            { 
+                            styles.pdfTitle,
+                            {
                                 fontSize: isLandscape ? 14 : 16,
                             }
                         ]} numberOfLines={1} ellipsizeMode="tail">
@@ -1025,6 +990,33 @@ const BatchDetailsScreen = () => {
             </View>
         );
     };
+
+    // Show YouTube video player if video is selected
+    if (selectedVideo) {
+        // Filter out the selected video from suggestions
+        const suggestedVideos = recordedVideos.filter(v => v.video_id !== selectedVideo.video_id);
+
+        return (
+            <>
+                <Stack.Screen
+                    options={{
+                        headerShown: false,
+                        statusBarStyle: 'light',
+                        statusBarBackgroundColor: '#1F2937',
+                        statusBarHidden: false,
+                    }}
+                />
+                <YouTubeVideoPlayer
+                    video={selectedVideo}
+                    courseId={courseId}
+                    courseName={course?.full_name || 'Course Videos'}
+                    onBack={() => setSelectedVideo(null)}
+                    suggestedVideos={suggestedVideos}
+                    onVideoSelect={setSelectedVideo}
+                />
+            </>
+        );
+    }
 
     // Show PDF viewer if PDF is selected
     if (selectedPDF) {
@@ -1956,6 +1948,82 @@ const styles = StyleSheet.create({
     pdfViewer: {
         flex: 1,
         backgroundColor: '#0F172A',
+    },
+    // Video Player Styles (matching all-videos.tsx)
+    videoPlayer: {
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+    },
+    videoInfo: {
+        padding: 20,
+    },
+    videoPlayerHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        marginBottom: 12,
+    },
+    videoTitleContainer: {
+        flex: 1,
+        marginRight: 12,
+    },
+    videoTitle: {
+        color: "#F9FAFB",
+        fontWeight: "600",
+        marginBottom: 8,
+        lineHeight: 24,
+    },
+    scheduledBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#D1FAE5",
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+        alignSelf: "flex-start",
+    },
+    scheduledBadgeText: {
+        color: "#10B981",
+        fontSize: 12,
+        fontWeight: "600",
+        marginLeft: 4,
+    },
+    videoDescription: {
+        color: "#D1D5DB",
+        lineHeight: 20,
+        marginBottom: 16,
+    },
+    videoMeta: {
+        gap: 8,
+        marginBottom: 16,
+    },
+    metaItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+    },
+    metaText: {
+        color: "#9CA3AF",
+    },
+    playIconContainer: {
+        justifyContent: "center",
+        alignItems: "center",
+        paddingLeft: 12,
+    },
+    clickToPlayContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingVertical: 12,
+        marginTop: 8,
+        backgroundColor: "#374151",
+        borderRadius: 8,
+        gap: 6,
+    },
+    clickToPlayText: {
+        color: "#3B82F6",
+        fontSize: 14,
+        fontWeight: "500",
     },
 });
 
