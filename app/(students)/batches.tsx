@@ -351,20 +351,6 @@ const MyBatchesScreen = () => {
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
                 <Text style={[styles.title, { fontSize: screenData.width < 600 ? 20 : 24 }]}>My Batches</Text>
-                <TouchableOpacity
-                    style={styles.refreshButton}
-                    onPress={handleManualRefresh}
-                    disabled={refreshing}
-                >
-                    <Ionicons
-                        name="refresh-outline"
-                        size={screenData.width < 600 ? 22 : 24}
-                        color="#6366F1"
-                        style={{
-                            transform: [{ rotate: refreshing ? '360deg' : '0deg' }]
-                        }}
-                    />
-                </TouchableOpacity>
             </View>
 
             {courses.length === 0 ? (
@@ -427,6 +413,7 @@ const styles = StyleSheet.create({
         marginVertical: 16,
         color: '#fff',
         flex: 1,
+        textAlign: 'center',
     },
     header: {
         flexDirection: 'row',

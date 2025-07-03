@@ -738,7 +738,7 @@ const BatchDetailsScreen = () => {
                             <View style={styles.videoMetaItem}>
                                 <Ionicons name="link-outline" size={14} color="#10B981" />
                                 <Text style={[styles.videoMetaText, { fontSize: isSmallScreen ? 11 : 12 }]}>
-                                    Linked to scheduled class
+                                    Class Recording
                                 </Text>
                             </View>
                         )}
