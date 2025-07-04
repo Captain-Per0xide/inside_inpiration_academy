@@ -2,6 +2,7 @@ import CourseIcon from "@/components/icons/CourseIcon";
 import TeacherIcon from "@/components/icons/TeacherIcon";
 import { supabase } from "@/lib/supabase";
 import { authService } from "@/services/authService";
+import PushTokenService from "@/services/pushTokenService";
 import { Ionicons } from "@expo/vector-icons";
 import {
   DrawerContentComponentProps,
@@ -27,6 +28,14 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
 
   useEffect(() => {
     fetchUserData();
+    // Register push token for notifications if user is logged in
+    const registerToken = async () => {
+      const isAuthenticated = await authService.getCurrentUserUID();
+      if (isAuthenticated) {
+        PushTokenService.registerPushToken();
+      }
+    };
+    registerToken();
   }, []);
 
   const fetchUserData = async () => {
@@ -159,7 +168,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           showsVerticalScrollIndicator={false}
         >
           <DrawerItemList {...props} />
-          
+
           {/* Push content to bottom */}
           <View style={{ flex: 1 }} />
 
@@ -339,7 +348,7 @@ export default function GuestLayout() {
           headerTitle: "Inside Inspiration Academy",
           headerTitleAlign: "center",
           headerStyle: {
-          backgroundColor: "#29395A",
+            backgroundColor: "#29395A",
           },
           headerTintColor: "#fff",
           drawerStyle: {

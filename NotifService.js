@@ -1,8 +1,6 @@
-import { Asset } from 'expo-asset';
-import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
-
-// App logo for notifications
+import { Asset } from "expo-asset";
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
 
 // Configure how notifications are handled when app is in foreground
 Notifications.setNotificationHandler({
@@ -24,23 +22,25 @@ class NotificationService {
 
   loadAppIcon = async () => {
     try {
-      const asset = Asset.fromModule(require('./assets/images/adaptive-icon.png'));
+      const asset = Asset.fromModule(
+        require("./assets/images/adaptive-icon.png")
+      );
       await asset.downloadAsync();
       this.appIconUri = asset.localUri || asset.uri;
-      console.log('App icon loaded for notifications:', this.appIconUri);
+      console.log("App icon loaded for notifications:", this.appIconUri);
     } catch (error) {
-      console.error('Error loading app icon:', error);
+      console.error("Error loading app icon:", error);
     }
   };
 
   configure = async () => {
     // Request permissions
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('default', {
-        name: 'Default',
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync("default", {
+        name: "Default",
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#3B82F6',
+        lightColor: "#3B82F6",
         sound: true,
         showBadge: true,
         enableLights: true,
@@ -49,20 +49,66 @@ class NotificationService {
     }
 
     // Request permissions
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    
-    if (existingStatus !== 'granted') {
+
+    if (existingStatus !== "granted") {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    
-    if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for push notification!');
+
+    if (finalStatus !== "granted") {
+      console.log("Failed to get push token for push notification!");
       return;
     }
-    
-    console.log('Notification permissions granted!');
+
+    console.log("Notification permissions granted!");
+  };
+
+  // Get Expo push token for the current device
+  getExpoPushToken = async () => {
+    try {
+      const token = await Notifications.getExpoPushTokenAsync({
+        projectId: "9ea8f217-50aa-4501-ab8a-7f0653ea3e91", // Your Expo project ID
+      });
+      console.log("Expo Push Token:", token.data);
+      return token.data;
+    } catch (error) {
+      console.error("Error getting Expo push token:", error);
+      return null;
+    }
+  };
+
+  // Send push notification to multiple users
+  sendPushNotifications = async (pushTokens, title, body, data = {}) => {
+    try {
+      const messages = pushTokens.map((pushToken) => ({
+        to: pushToken,
+        sound: "default",
+        title: title,
+        body: body,
+        data: data,
+        priority: "high",
+      }));
+
+      const response = await fetch("https://exp.host/--/api/v2/push/send", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Accept-encoding": "gzip, deflate",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(messages),
+      });
+
+      const result = await response.json();
+      console.log("Push notification result:", result);
+      return result;
+    } catch (error) {
+      console.error("Error sending push notifications:", error);
+      return null;
+    }
   };
 
   showNotification = async (title, message, data = {}, options = {}) => {
@@ -75,26 +121,26 @@ class NotificationService {
         priority: Notifications.AndroidNotificationPriority.HIGH,
         ...Platform.select({
           android: {
-            color: '#3B82F6', // Blue color for notification accent
+            color: "#3B82F6", // Blue color for notification accent
             badge: 1,
-            categoryIdentifier: 'admin-notification',
+            categoryIdentifier: "admin-notification",
           },
           ios: {
-            sound: 'default',
+            sound: "default",
             badge: 1,
-            categoryIdentifier: 'admin-notification',
+            categoryIdentifier: "admin-notification",
           },
         }),
         ...options,
       };
 
       // Add app icon for iOS notifications
-      if (Platform.OS === 'ios' && this.appIconUri) {
+      if (Platform.OS === "ios" && this.appIconUri) {
         notificationContent.attachments = [
           {
-            identifier: 'app-logo',
+            identifier: "app-logo",
             url: this.appIconUri,
-            typeHint: 'public.png',
+            typeHint: "public.png",
           },
         ];
       }
@@ -105,7 +151,7 @@ class NotificationService {
       });
       this.lastId++;
     } catch (error) {
-      console.error('Error showing notification:', error);
+      console.error("Error showing notification:", error);
     }
   };
 
@@ -113,16 +159,16 @@ class NotificationService {
     try {
       await Notifications.cancelScheduledNotificationAsync(identifier);
     } catch (error) {
-      console.error('Error cancelling notification:', error);
+      console.error("Error cancelling notification:", error);
     }
   };
 
   cancelAllNotifications = async () => {
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
-      console.log('All notifications cancelled');
+      console.log("All notifications cancelled");
     } catch (error) {
-      console.error('Error cancelling all notifications:', error);
+      console.error("Error cancelling all notifications:", error);
     }
   };
 
@@ -135,25 +181,25 @@ class NotificationService {
         priority: Notifications.AndroidNotificationPriority.HIGH,
         ...Platform.select({
           android: {
-            color: '#3B82F6', // Blue color for notification accent
+            color: "#3B82F6", // Blue color for notification accent
             badge: 1,
-            categoryIdentifier: 'admin-notification',
+            categoryIdentifier: "admin-notification",
           },
           ios: {
-            sound: 'default',
+            sound: "default",
             badge: 1,
-            categoryIdentifier: 'admin-notification',
+            categoryIdentifier: "admin-notification",
           },
         }),
       };
 
       // Add app icon for iOS notifications
-      if (Platform.OS === 'ios' && this.appIconUri) {
+      if (Platform.OS === "ios" && this.appIconUri) {
         notificationContent.attachments = [
           {
-            identifier: 'app-logo',
+            identifier: "app-logo",
             url: this.appIconUri,
-            typeHint: 'public.png',
+            typeHint: "public.png",
           },
         ];
       }
@@ -167,7 +213,7 @@ class NotificationService {
       this.lastId++;
       return identifier;
     } catch (error) {
-      console.error('Error scheduling notification:', error);
+      console.error("Error scheduling notification:", error);
       return null;
     }
   };

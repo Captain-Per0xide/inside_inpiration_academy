@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { getCurrentDate, getCurrentISOString } from "@/utils/testDate";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import * as Notifications from 'expo-notifications';
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -21,6 +22,8 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import NotifService from "../NotifService";
+import PushTokenService from "../services/pushTokenService";
 
 interface Course {
   id: string;
@@ -145,6 +148,31 @@ const CourseDetailsPage = () => {
 
     const subscription = Dimensions.addEventListener("change", onChange);
     return () => subscription?.remove();
+  }, []);
+
+  useEffect(() => {
+    // Request notification permissions and register push token
+    const requestPermissions = async () => {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== 'granted') {
+        console.log('Failed to get notification permissions!');
+        return;
+      }
+
+      console.log('Notification permissions granted!');
+
+      // Register push token for current user
+      await PushTokenService.registerPushToken();
+    };
+
+    requestPermissions();
   }, []);
 
   const fetchCourse = useCallback(async () => {
@@ -748,6 +776,66 @@ const CourseDetailsPage = () => {
         scheduled_classes: updatedScheduledClasses
       } : null);
 
+      // Send push notifications to all enrolled students
+      let notificationsSent = 0;
+      try {
+        const enrolledStudentsWithSuccessStatus = enrolledStudents.filter(
+          student => student.status === 'success'
+        );
+
+        if (enrolledStudentsWithSuccessStatus.length > 0) {
+          console.log(`Fetching push tokens for ${enrolledStudentsWithSuccessStatus.length} enrolled students...`);
+
+          // Get push tokens for all enrolled students
+          const { data: usersWithTokens, error: tokenError } = await supabase
+            .from('users')
+            .select('id, name, push_token')
+            .in('id', enrolledStudentsWithSuccessStatus.map(student => student.id))
+            .not('push_token', 'is', null);
+
+          if (tokenError) {
+            console.error('Error fetching user push tokens:', tokenError);
+          } else if (usersWithTokens && usersWithTokens.length > 0) {
+            const validPushTokens = usersWithTokens
+              .map(user => user.push_token)
+              .filter(token => token && token.startsWith('ExponentPushToken['));
+
+            if (validPushTokens.length > 0) {
+              const notificationTitle = `New Class Scheduled - ${course.codename}`;
+              const notificationBody = `${classTopicName.trim()} scheduled for ${scheduledDateTime.toLocaleDateString()} at ${scheduledDateTime.toLocaleTimeString()}`;
+
+              // Send push notifications to all enrolled students' devices
+              const pushResult = await NotifService.sendPushNotifications(
+                validPushTokens,
+                notificationTitle,
+                notificationBody,
+                {
+                  courseId: course.id,
+                  courseName: course.codename,
+                  classId: newScheduledClass.id,
+                  scheduledDateTime: scheduledDateTime.toISOString(),
+                  type: 'class_scheduled'
+                }
+              );
+
+              if (pushResult) {
+                notificationsSent = validPushTokens.length;
+                console.log(`Push notifications sent to ${notificationsSent} students`);
+              } else {
+                console.log('Failed to send push notifications');
+              }
+            } else {
+              console.log('No valid push tokens found for enrolled students');
+            }
+          } else {
+            console.log('No students found with push tokens');
+          }
+        }
+      } catch (notificationError) {
+        console.error('Error sending notifications:', notificationError);
+        // Don't show error to user as the main operation (scheduling) was successful
+      }
+
       // Reset form
       setClassTopicName('');
       setMeetingLink('');
@@ -755,7 +843,16 @@ const CourseDetailsPage = () => {
       setClassTime(getCurrentDate());
       setShowScheduleClassModal(false);
 
-      Alert.alert('Success', 'Class scheduled successfully!');
+      const enrolledCount = enrolledStudents.filter(s => s.status === 'success').length;
+      let successMessage = 'Class scheduled successfully!';
+
+      if (notificationsSent > 0) {
+        successMessage = `Class scheduled successfully! Push notifications sent to ${notificationsSent} out of ${enrolledCount} enrolled students.`;
+      } else if (enrolledCount > 0) {
+        successMessage = `Class scheduled successfully! Note: Students need to enable notifications to receive alerts.`;
+      }
+
+      Alert.alert('Success', successMessage);
 
     } catch (error) {
       console.error('Error scheduling class:', error);

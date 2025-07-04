@@ -8,6 +8,7 @@ import SettingsIcon from "@/components/icons/SettingsIcon";
 import TestSeriesIcon from "@/components/icons/TestSeriesIcon";
 import { supabase } from "@/lib/supabase";
 import { authService } from "@/services/authService";
+import PushTokenService from "@/services/pushTokenService";
 import { Ionicons } from "@expo/vector-icons";
 import { DrawerContentComponentProps, DrawerContentScrollView, DrawerItemList } from "@react-navigation/drawer";
 import { router } from "expo-router";
@@ -27,6 +28,8 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
 
   useEffect(() => {
     fetchUserData();
+    // Register push token for notifications
+    PushTokenService.registerPushToken();
   }, []);
 
   const fetchUserData = async () => {
