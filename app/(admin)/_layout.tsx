@@ -543,8 +543,8 @@ export default function AdminLayout() {
         <Drawer.Screen
           name="liveclass"
           options={{
-            title: 'Live Classes Management',
-            drawerLabel: 'Live Classes Management',
+            title: 'Attendance Management',
+            drawerLabel: 'Attendance Management',
             drawerIcon: () => <LiveIcon stroke="#fff" />
           }}
         />
