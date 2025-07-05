@@ -10,6 +10,8 @@ class FirebaseService {
         console.log('Initializing Firebase...');
         await initializeApp();
         console.log('Firebase initialized successfully');
+      } else {
+        console.log('Firebase already initialized');
       }
 
       // Request permission for notifications
@@ -60,7 +62,7 @@ class FirebaseService {
     try {
       // First try to get Expo push token
       const token = await Notifications.getExpoPushTokenAsync({
-        projectId: 'inside-inspiration-acade-a0b27', // Your Firebase project ID
+        projectId: '9ea8f217-50aa-4501-ab8a-7f0653ea3e91', // Your Expo project ID from app.json
       });
       return token.data;
     } catch (error) {

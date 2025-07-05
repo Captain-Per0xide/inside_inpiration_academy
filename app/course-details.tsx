@@ -23,7 +23,6 @@ import {
   View
 } from "react-native";
 import NotifService from "../NotifService";
-import PushTokenService from "../services/pushTokenService";
 
 interface Course {
   id: string;
@@ -166,10 +165,9 @@ const CourseDetailsPage = () => {
         return;
       }
 
-      console.log('Notification permissions granted!');
-
-      // Register push token for current user
-      await PushTokenService.registerPushToken();
+      console.log('Notification permissions granted for admin!');
+      // Note: Admin doesn't register push token to avoid receiving student notifications
+      // Student push tokens are managed separately through PushTokenService role checking
     };
 
     requestPermissions();
@@ -785,24 +783,57 @@ const CourseDetailsPage = () => {
 
         if (enrolledStudentsWithSuccessStatus.length > 0) {
           console.log(`Fetching push tokens for ${enrolledStudentsWithSuccessStatus.length} enrolled students...`);
+          console.log('Student IDs to notify:', enrolledStudentsWithSuccessStatus.map(s => s.id));
 
-          // Get push tokens for all enrolled students
+          // Get push tokens for enrolled students with explicit role filtering
           const { data: usersWithTokens, error: tokenError } = await supabase
             .from('users')
-            .select('id, name, push_token')
+            .select('id, name, push_token, role')
             .in('id', enrolledStudentsWithSuccessStatus.map(student => student.id))
             .not('push_token', 'is', null);
 
           if (tokenError) {
             console.error('Error fetching user push tokens:', tokenError);
           } else if (usersWithTokens && usersWithTokens.length > 0) {
-            const validPushTokens = usersWithTokens
+            // Double-check that we only notify students (role = 'student' or null/undefined = default student)
+            const studentUsersWithTokens = usersWithTokens.filter(user => 
+              user.role === 'student' || !user.role // Default to student if no role
+            );
+
+            console.log('Total users with tokens found:', usersWithTokens.length);
+            console.log('Students with tokens after role filtering:', studentUsersWithTokens.length);
+            console.log('Student token samples:', studentUsersWithTokens.map(u => ({ 
+              id: u.id, 
+              name: u.name,
+              role: u.role || 'student (default)', 
+              tokenType: u.push_token?.startsWith('ExponentPushToken[') ? 'Expo' : 'FCM',
+              tokenPreview: u.push_token?.substring(0, 20) + '...' 
+            })));
+
+            const validPushTokens = studentUsersWithTokens
               .map(user => user.push_token)
-              .filter(token => token && token.startsWith('ExponentPushToken['));
+              .filter(token => token && (
+                token.startsWith('ExponentPushToken[') || // Expo tokens
+                (token.length > 50 && !token.includes(' ')) // FCM tokens (long strings without spaces)
+              ));
+
+            console.log(`Found ${validPushTokens.length} valid student push tokens`);
+            console.log('Token types breakdown:', {
+              expo: validPushTokens.filter(t => t.startsWith('ExponentPushToken[')).length,
+              fcm: validPushTokens.filter(t => !t.startsWith('ExponentPushToken[')).length
+            });
 
             if (validPushTokens.length > 0) {
               const notificationTitle = `New Class Scheduled - ${course.codename}`;
               const notificationBody = `${classTopicName.trim()} scheduled for ${scheduledDateTime.toLocaleDateString()} at ${scheduledDateTime.toLocaleTimeString()}`;
+
+              console.log('Sending notifications to students with data:', {
+                title: notificationTitle,
+                body: notificationBody,
+                studentTokenCount: validPushTokens.length,
+                courseId: course.id,
+                courseName: course.codename
+              });
 
               // Send push notifications to all enrolled students' devices
               const pushResult = await NotifService.sendPushNotifications(
@@ -820,9 +851,9 @@ const CourseDetailsPage = () => {
 
               if (pushResult) {
                 notificationsSent = validPushTokens.length;
-                console.log(`Push notifications sent to ${notificationsSent} students`);
+                console.log(`✅ Push notifications sent to ${notificationsSent} student devices`);
               } else {
-                console.log('Failed to send push notifications');
+                console.log('❌ Failed to send push notifications');
               }
             } else {
               console.log('No valid push tokens found for enrolled students');

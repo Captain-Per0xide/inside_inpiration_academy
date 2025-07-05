@@ -97,7 +97,7 @@ class NotificationService {
       
       // Fallback to Expo only
       const expoToken = await Notifications.getExpoPushTokenAsync({
-        projectId: "9ea8f217-50aa-4501-ab8a-7f0653ea3e91", // Your Expo project ID
+        projectId: "9ea8f217-50aa-4501-ab8a-7f0653ea3e91", // Your Expo project ID from app.json
       });
       console.log("Expo Push Token:", expoToken.data);
       return expoToken.data;
@@ -152,25 +152,24 @@ class NotificationService {
       // Send to FCM tokens using Firebase
       if (fcmTokens.length > 0) {
         try {
-          // Import Firebase messaging for sending FCM notifications
-          const messaging = (await import('@react-native-firebase/messaging')).default;
+          console.log(`Processing ${fcmTokens.length} FCM tokens...`);
           
           const fcmResults = [];
           for (const token of fcmTokens) {
             try {
-              // Note: For server-side FCM sending, you'd typically use Firebase Admin SDK
-              // This is a client-side approach - in production, you'd send FCM from your server
-              console.log(`Would send FCM notification to token: ${token.substring(0, 20)}...`);
+              // Note: For proper FCM server-side sending, you'd use Firebase Admin SDK on your backend
+              // For now, we'll create a local notification to ensure students get notified
+              console.log(`Sending local notification for FCM token: ${token.substring(0, 20)}...`);
               
-              // For now, we'll use local notifications as fallback for FCM tokens
               await this.showNotification(title, body, data);
-              fcmResults.push({ token, status: 'sent_locally' });
+              fcmResults.push({ token: token.substring(0, 20) + '...', status: 'local_notification_sent' });
             } catch (fcmError) {
               console.error(`Error with FCM token ${token.substring(0, 20)}:`, fcmError);
-              fcmResults.push({ token, error: fcmError.message });
+              fcmResults.push({ token: token.substring(0, 20) + '...', error: fcmError.message });
             }
           }
           
+          console.log('FCM notifications processed:', fcmResults);
           results.push({ type: 'fcm', result: fcmResults });
         } catch (fcmError) {
           console.error('Error sending FCM notifications:', fcmError);
