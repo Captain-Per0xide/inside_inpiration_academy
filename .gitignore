@@ -14,6 +14,7 @@ android/.kotlin/
 android/app/build/
 android/app/.cxx/
 android/app/debug.keystore
+android/app/google-services.json - Commented out to allow for EAS Build
 
 # Expo
 .expo/
