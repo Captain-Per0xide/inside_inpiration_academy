@@ -14,7 +14,7 @@ android/.kotlin/
 android/app/build/
 android/app/.cxx/
 android/app/debug.keystore
-#android/app/google-services.json - Commented out to allow for EAS Build
+android/app/google-services.json - Commented out to allow for EAS Build
 
 # Expo
 .expo/
@@ -52,5 +52,5 @@ yarn-error.*
 
 app-example
 eas.json
-# google-services.json - Commented out to allow for EAS Build
+google-services.json - Commented out to allow for EAS Build
 # Note: google-services.json is now in root directory for EAS compatibility
