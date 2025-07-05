@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "27279779898",
+    "project_id": "inside-inspiration-acade-a0b27",
+    "storage_bucket": "inside-inspiration-acade-a0b27.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:27279779898:android:d90b4045f748ec1d842d03",
+        "android_client_info": {
+          "package_name": "com.anonymous.inside_inpiration_academy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyASbW6TmmdV-n74UzKBWKV-_m-bxjHRs-Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
