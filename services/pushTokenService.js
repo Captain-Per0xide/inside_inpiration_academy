@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import NotifService from "../NotifService";
 
 class PushTokenService {
-  // Register push token for the current user
+  // Register push token for the current user (only for students)
   static registerPushToken = async () => {
     try {
       // Get current user
@@ -16,6 +16,27 @@ class PushTokenService {
         return false;
       }
 
+      // Check user role from database to ensure only students register tokens
+      const { data: userData, error: userDataError } = await supabase
+        .from("users")
+        .select("id, role")
+        .eq("id", user.id)
+        .single();
+
+      if (userDataError) {
+        console.error("Error fetching user role:", userDataError);
+        return false;
+      }
+
+      // Only register push tokens for students (role === 'student' or no role, defaulting to student)
+      const userRole = userData?.role || 'student'; // Default to student if no role is set
+      if (userRole !== 'student') {
+        console.log(`User role is '${userRole}', skipping push token registration for non-students`);
+        return false;
+      }
+
+      console.log("Registering push token for student user:", user.id);
+
       // Get Expo push token
       const pushToken = await NotifService.getExpoPushToken();
       if (!pushToken) {
@@ -23,7 +44,7 @@ class PushTokenService {
         return false;
       }
 
-      // Store push token in database
+      // Store push token in database for student
       const { error: updateError } = await supabase.from("users").upsert({
         id: user.id,
         push_token: pushToken,
@@ -35,7 +56,7 @@ class PushTokenService {
         return false;
       }
 
-      console.log("Push token registered successfully:", pushToken);
+      console.log("Student push token registered successfully:", pushToken);
       return true;
     } catch (error) {
       console.error("Error in registerPushToken:", error);
@@ -59,7 +80,7 @@ class PushTokenService {
         })
         .eq("id", user.id);
 
-      console.log("Push token removed");
+      console.log("Push token removed for user:", user.id);
     } catch (error) {
       console.error("Error removing push token:", error);
     }

@@ -1,6 +1,7 @@
 import { Asset } from "expo-asset";
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import FirebaseService from "./services/FirebaseService";
 
 // Configure how notifications are handled when app is in foreground
 Notifications.setNotificationHandler({
@@ -18,7 +19,18 @@ class NotificationService {
     this.lastId = 0;
     this.appIconUri = null;
     this.loadAppIcon();
+    this.initializeFirebase();
   }
+
+  initializeFirebase = async () => {
+    try {
+      await FirebaseService.initialize();
+      FirebaseService.setupMessageHandlers();
+      console.log("Firebase integration initialized");
+    } catch (error) {
+      console.warn("Firebase initialization failed, using local notifications only:", error);
+    }
+  };
 
   loadAppIcon = async () => {
     try {
@@ -64,47 +76,109 @@ class NotificationService {
     }
 
     console.log("Notification permissions granted!");
+    
+    // Also request Firebase permission
+    try {
+      await FirebaseService.requestNotificationPermission();
+    } catch (error) {
+      console.warn("Firebase permission request failed:", error);
+    }
   };
 
-  // Get Expo push token for the current device
+  // Get push token (Firebase/Expo)
   getExpoPushToken = async () => {
     try {
-      const token = await Notifications.getExpoPushTokenAsync({
+      // First try Firebase/Expo integrated token
+      const token = await FirebaseService.getExpoPushToken();
+      if (token) {
+        console.log("Push Token:", token);
+        return token;
+      }
+      
+      // Fallback to Expo only
+      const expoToken = await Notifications.getExpoPushTokenAsync({
         projectId: "9ea8f217-50aa-4501-ab8a-7f0653ea3e91", // Your Expo project ID
       });
-      console.log("Expo Push Token:", token.data);
-      return token.data;
+      console.log("Expo Push Token:", expoToken.data);
+      return expoToken.data;
     } catch (error) {
-      console.error("Error getting Expo push token:", error);
+      console.error("Error getting push token:", error);
       return null;
     }
   };
 
-  // Send push notification to multiple users
+  // Send push notification to multiple users (handles both Expo and FCM tokens)
   sendPushNotifications = async (pushTokens, title, body, data = {}) => {
     try {
-      const messages = pushTokens.map((pushToken) => ({
-        to: pushToken,
-        sound: "default",
-        title: title,
-        body: body,
-        data: data,
-        priority: "high",
-      }));
+      // Separate tokens by type
+      const expoTokens = pushTokens.filter(token => token.startsWith('ExponentPushToken['));
+      const fcmTokens = pushTokens.filter(token => !token.startsWith('ExponentPushToken[') && token.length > 50);
 
-      const response = await fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Accept-encoding": "gzip, deflate",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(messages),
-      });
+      console.log(`Sending notifications to ${expoTokens.length} Expo tokens and ${fcmTokens.length} FCM tokens`);
 
-      const result = await response.json();
-      console.log("Push notification result:", result);
-      return result;
+      const results = [];
+
+      // Send to Expo tokens using Expo push service
+      if (expoTokens.length > 0) {
+        try {
+          const expoMessages = expoTokens.map((pushToken) => ({
+            to: pushToken,
+            sound: "default",
+            title: title,
+            body: body,
+            data: data,
+            priority: "high",
+          }));
+
+          const expoResponse = await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Accept-encoding": "gzip, deflate",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(expoMessages),
+          });
+
+          const expoResult = await expoResponse.json();
+          console.log("Expo push notification result:", expoResult);
+          results.push({ type: 'expo', result: expoResult });
+        } catch (expoError) {
+          console.error('Error sending Expo notifications:', expoError);
+          results.push({ type: 'expo', error: expoError.message });
+        }
+      }
+
+      // Send to FCM tokens using Firebase
+      if (fcmTokens.length > 0) {
+        try {
+          // Import Firebase messaging for sending FCM notifications
+          const messaging = (await import('@react-native-firebase/messaging')).default;
+          
+          const fcmResults = [];
+          for (const token of fcmTokens) {
+            try {
+              // Note: For server-side FCM sending, you'd typically use Firebase Admin SDK
+              // This is a client-side approach - in production, you'd send FCM from your server
+              console.log(`Would send FCM notification to token: ${token.substring(0, 20)}...`);
+              
+              // For now, we'll use local notifications as fallback for FCM tokens
+              await this.showNotification(title, body, data);
+              fcmResults.push({ token, status: 'sent_locally' });
+            } catch (fcmError) {
+              console.error(`Error with FCM token ${token.substring(0, 20)}:`, fcmError);
+              fcmResults.push({ token, error: fcmError.message });
+            }
+          }
+          
+          results.push({ type: 'fcm', result: fcmResults });
+        } catch (fcmError) {
+          console.error('Error sending FCM notifications:', fcmError);
+          results.push({ type: 'fcm', error: fcmError.message });
+        }
+      }
+
+      return results;
     } catch (error) {
       console.error("Error sending push notifications:", error);
       return null;

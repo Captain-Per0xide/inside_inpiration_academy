@@ -13,6 +13,7 @@
       "bundleIdentifier": "com.anonymous.inside-inpiration-academy"
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -50,6 +51,12 @@
           "color": "#3B82F6",
           "defaultChannel": "default"
         }
+      ],
+      [
+        "@react-native-firebase/app"
+      ],
+      [
+        "@react-native-firebase/messaging"
       ],
       "expo-web-browser",
       "@config-plugins/react-native-blob-util",
