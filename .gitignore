@@ -51,5 +51,5 @@ yarn-error.*
 
 app-example
 eas.json
-# google-services.json - Commented out to allow for EAS Build
+google-services.json - Commented out to allow for EAS Build
 # Note: google-services.json is now in root directory for EAS compatibility
