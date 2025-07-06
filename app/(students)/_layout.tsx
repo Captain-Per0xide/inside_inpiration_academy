@@ -137,76 +137,78 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           backgroundColor: '#111827',
           borderRadius: 8
         }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
-              {userData.user_image ? (
-                <Image
-                  source={{ uri: userData.user_image }}
-                  style={{
-                    width: 50,
-                    height: 50,
-                    borderRadius: 25,
-                    marginRight: 15,
-                    backgroundColor: '#e0e0e0'
-                  }}
-                />
-              ) : (
-                <View style={{
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+            {userData.user_image ? (
+              <Image
+                source={{ uri: userData.user_image }}
+                style={{
                   width: 50,
                   height: 50,
                   borderRadius: 25,
-                  backgroundColor: '#FCCC42',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  marginRight: 15
-                }}>
-                  <Text style={{
-                    fontSize: 20,
-                    fontWeight: 'bold',
-                    color: '#fff'
-                  }}>
-                    {userData.name && userData.name.length > 0 ? userData.name.charAt(0).toUpperCase() : 'U'}
-                  </Text>
-                </View>
-              )}
-
-              <View style={{ flex: 1 }}>
+                  marginRight: 15,
+                  backgroundColor: '#e0e0e0'
+                }}
+              />
+            ) : (
+              <View style={{
+                width: 50,
+                height: 50,
+                borderRadius: 25,
+                backgroundColor: '#FCCC42',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginRight: 15
+              }}>
                 <Text style={{
-                  fontSize: 16,
+                  fontSize: 20,
                   fontWeight: 'bold',
-                  color: '#fff',
-                  marginBottom: 2
+                  color: '#fff'
                 }}>
-                  {userData.name ? userData.name : 'User'}
-                </Text>
-                <Text style={{
-                  fontSize: 14,
-                  color: '#fefefe'
-                }} numberOfLines={1}>
-                  {userData.email ? userData.email : 'No email'}
+                  {userData.name && userData.name.length > 0 ? userData.name.charAt(0).toUpperCase() : 'U'}
                 </Text>
               </View>
-              <SettingsIcon stroke="white" />
-            </View>
+            )}
 
-            <TouchableOpacity
-              style={{
-                backgroundColor: '#ff4444',
-                paddingVertical: 12,
-                paddingHorizontal: 20,
-                borderRadius: 8,
-                alignItems: 'center'
-              }}
-              onPress={handleLogout}
-            >
+            <View style={{ flex: 1 }}>
               <Text style={{
-                color: 'white',
                 fontSize: 16,
-                fontWeight: 'bold'
+                fontWeight: 'bold',
+                color: '#fff',
+                marginBottom: 2
               }}>
-                Logout
+                {userData.name ? userData.name : 'User'}
               </Text>
+              <Text style={{
+                fontSize: 14,
+                color: '#fefefe'
+              }} numberOfLines={1}>
+                {userData.email ? userData.email : 'No email'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => router.push('/(students)/profile')}>
+              <SettingsIcon stroke="white" />
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#ff4444',
+              paddingVertical: 12,
+              paddingHorizontal: 20,
+              borderRadius: 8,
+              alignItems: 'center'
+            }}
+            onPress={handleLogout}
+          >
+            <Text style={{
+              color: 'white',
+              fontSize: 16,
+              fontWeight: 'bold'
+            }}>
+              Logout
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </DrawerContentScrollView>
   );
@@ -296,6 +298,14 @@ export default function StudentsLayout() {
             title: 'Payment',
             drawerLabel: 'Payment',
             drawerIcon: () => <PaymentIcon stroke="white" />
+          }}
+        />
+        <Drawer.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            drawerLabel: 'Profile',
+            drawerItemStyle: { display: 'none' }, // Hide from drawer
           }}
         />
       </Drawer>

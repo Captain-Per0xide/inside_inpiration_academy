@@ -1,5 +1,4 @@
 import PDFViewer from "@/components/PDFViewer";
-import VideoPlayer from "@/components/VideoPlayer";
 import YouTubeVideoPlayer from "@/components/YouTubeVideoPlayer";
 import { supabase } from "@/lib/supabase";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,6 +9,7 @@ import {
     ActivityIndicator,
     Alert,
     Dimensions,
+    Image,
     Modal,
     SafeAreaView,
     ScrollView,
@@ -389,13 +389,26 @@ const AllVideosPage = () => {
                                 onPress={() => setSelectedVideo(video)}
                                 activeOpacity={0.7}
                             >
-                                {/* Video Player */}
-                                <VideoPlayer
-                                    videoUrl={video.video_url}
-                                    thumbnailUrl={video.thumbnail_url}
-                                    title={video.title}
-                                    style={styles.videoPlayer}
-                                />
+                                {/* Video Thumbnail */}
+                                <View style={styles.thumbnailContainer}>
+                                    {video.thumbnail_url ? (
+                                        <Image
+                                            source={{ uri: video.thumbnail_url }}
+                                            style={styles.thumbnail}
+                                            resizeMode="cover"
+                                        />
+                                    ) : (
+                                        <View style={styles.placeholderThumbnail}>
+                                            <Ionicons name="play-circle" size={60} color="#6B7280" />
+                                        </View>
+                                    )}
+                                    {/* Play button overlay */}
+                                    <View style={styles.playButtonOverlay}>
+                                        <View style={styles.playButton}>
+                                            <Ionicons name="play" size={24} color="white" />
+                                        </View>
+                                    </View>
+                                </View>
 
                                 {/* Video Info */}
                                 <View style={styles.videoInfo}>
@@ -447,35 +460,6 @@ const AllVideosPage = () => {
                                             </Text>
                                         </View>
                                     </View>
-
-                                    {/* Additional Resources */}
-                                    {(video.class_notes_url || video.assignment_url) && (
-                                        <View style={styles.resourcesContainer}>
-                                            <Text style={[styles.resourcesTitle, { fontSize: isSmallScreen ? 14 : 15 }]}>
-                                                Resources:
-                                            </Text>
-                                            <View style={styles.resourcesList}>
-                                                {video.class_notes_url && (
-                                                    <TouchableOpacity
-                                                        style={styles.resourceButton}
-                                                        onPress={() => handleViewPDF(video.class_notes_url!, 'Class Notes - ' + video.title, 'notes')}
-                                                    >
-                                                        <Ionicons name="document-text" size={16} color="#10B981" />
-                                                        <Text style={styles.resourceButtonText}>Class Notes</Text>
-                                                    </TouchableOpacity>
-                                                )}
-                                                {video.assignment_url && (
-                                                    <TouchableOpacity
-                                                        style={styles.resourceButton}
-                                                        onPress={() => handleViewPDF(video.assignment_url!, 'Assignment - ' + video.title, 'assignment')}
-                                                    >
-                                                        <Ionicons name="document" size={16} color="#F59E0B" />
-                                                        <Text style={styles.resourceButtonText}>Assignment</Text>
-                                                    </TouchableOpacity>
-                                                )}
-                                            </View>
-                                        </View>
-                                    )}
                                 </View>
                             </TouchableOpacity>
                         ))
@@ -688,6 +672,44 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 16,
         borderTopRightRadius: 16,
     },
+    thumbnailContainer: {
+        position: 'relative',
+        aspectRatio: 16 / 9,
+        backgroundColor: '#374151',
+        borderTopLeftRadius: 16,
+        borderTopRightRadius: 16,
+        overflow: 'hidden',
+    },
+    thumbnail: {
+        width: '100%',
+        height: '100%',
+    },
+    placeholderThumbnail: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#374151',
+    },
+    playButtonOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    },
+    playButton: {
+        width: 60,
+        height: 60,
+        borderRadius: 30,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 3, // Slight offset to center the play icon visually
+    },
     videoInfo: {
         padding: 20,
     },
@@ -750,34 +772,6 @@ const styles = StyleSheet.create({
     },
     metaText: {
         color: "#9CA3AF",
-    },
-    resourcesContainer: {
-        borderTopWidth: 1,
-        borderTopColor: "#374151",
-        paddingTop: 16,
-    },
-    resourcesTitle: {
-        color: "#F9FAFB",
-        fontWeight: "600",
-        marginBottom: 12,
-    },
-    resourcesList: {
-        flexDirection: "row",
-        gap: 12,
-    },
-    resourceButton: {
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#374151",
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 8,
-        gap: 6,
-    },
-    resourceButtonText: {
-        color: "#D1D5DB",
-        fontSize: 14,
-        fontWeight: "500",
     },
     modalOverlay: {
         flex: 1,

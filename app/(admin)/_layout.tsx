@@ -458,7 +458,9 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
                   {userData.email || 'No email'}
                 </Text>
               </View>
-              <SettingsIcon stroke="#fff" />
+              <TouchableOpacity onPress={() => router.push('/(admin)/profile')}>
+                <SettingsIcon stroke="#fff" />
+              </TouchableOpacity>
             </View>
 
             <TouchableOpacity
@@ -597,6 +599,14 @@ export default function AdminLayout() {
             title: 'Payment',
             drawerLabel: 'Payment',
             drawerIcon: () => <PaymentIcon stroke="white" />
+          }}
+        />
+        <Drawer.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            drawerLabel: () => null, // Hide from drawer menu
+            drawerItemStyle: { display: "none" }, // Hide from drawer menu
           }}
         />
       </Drawer>

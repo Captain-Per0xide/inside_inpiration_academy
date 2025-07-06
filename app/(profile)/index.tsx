@@ -2,7 +2,6 @@ import { supabase } from '@/lib/supabase';
 import { authService } from '@/services/authService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Picker } from '@react-native-picker/picker';
 import * as FileSystem from 'expo-file-system';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
@@ -222,10 +221,7 @@ export default function ProfilePage() {
         const errors: Record<string, boolean> = {};
         let hasErrors = false;
 
-        if (!formData.name?.trim()) {
-            errors.name = true;
-            hasErrors = true;
-        }
+        // Remove validation for name, email, and gender as they are read-only
         if (!formData.phone_no?.trim() || formData.phone_no === '+91 ') {
             errors.phone_no = true;
             hasErrors = true;
@@ -244,10 +240,6 @@ export default function ProfilePage() {
         }
         if (!formData.univ_name?.trim()) {
             errors.univ_name = true;
-            hasErrors = true;
-        }
-        if (!selectedGender || selectedGender.trim() === '') {
-            errors.gender = true;
             hasErrors = true;
         }
         if (!imageUrl && !pickedImage) {
@@ -333,20 +325,10 @@ export default function ProfilePage() {
                 setPickedImage(null); // Clear picked image since it's been uploaded
             }
 
-            // Use the routing utility to determine the appropriate route
-            const redirectRoute = await determineUserRoute(id);
-            router.replace(redirectRoute as any);
+            // Navigate back to the previous route (students area)
+            router.back();
 
-            // Alert.alert('Success', successMessage, [
-            //     {
-            //         text: 'OK',
-            //         onPress: () => {
-            //             setTimeout(() => {
-            //                 router.replace(redirectRoute);
-            //             }, 400);
-            //         },
-            //     },
-            // ]);
+            Alert.alert('Success', 'Profile updated successfully!');
         } catch (error) {
             Alert.alert('Error', `Failed to update profile: ${error}`);
             console.error('Error updating profile:', error);
@@ -375,10 +357,22 @@ export default function ProfilePage() {
                 <ActivityIndicator size="large" color="#007AFF" />
             </View>
         );
-    } return (
+    }    return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-            <Text style={styles.welcomeText}>Complete Your Profile</Text>
-            <Text style={styles.subtitleText}>Please fill in all required fields to continue</Text>
+            {/* Header with cross button */}
+            <View style={styles.header}>
+                <TouchableOpacity 
+                    style={styles.crossButton}
+                    onPress={() => router.back()}
+                >
+                    <Ionicons name="close" size={24} color="#fff" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>Profile</Text>
+                <View style={styles.headerSpacer} />
+            </View>
+
+            <Text style={styles.welcomeText}>Edit Your Profile</Text>
+            <Text style={styles.subtitleText}>Update your profile information below</Text>
 
             <TouchableOpacity
                 onPress={pickImage}
@@ -407,24 +401,21 @@ export default function ProfilePage() {
 
             <View style={styles.form}>
                 <View style={styles.inputGroup}>
-                    <Text style={[styles.inputLabel, validationErrors.name && styles.errorLabel]}>
-                        Full Name *
+                    <Text style={styles.inputLabel}>
+                        Full Name
                     </Text>
-                    <TextInput
-                        style={[
-                            styles.input,
-                            validationErrors.name && styles.errorInput
-                        ]}
-                        placeholder="Enter your full name"
-                        placeholderTextColor="#9CA3AF"
-                        value={formData.name || ''}
-                        onChangeText={(text) => {
-                            setFormData(prev => ({ ...prev, name: text }));
-                            if (text.trim()) {
-                                setValidationErrors(prev => ({ ...prev, name: false }));
-                            }
-                        }}
-                    />
+                    <View style={[styles.input, styles.readOnlyInput]}>
+                        <Text style={styles.readOnlyText}>{formData.name || 'Not set'}</Text>
+                    </View>
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text style={styles.inputLabel}>
+                        Email
+                    </Text>
+                    <View style={[styles.input, styles.readOnlyInput]}>
+                        <Text style={styles.readOnlyText}>{formData.email || 'Not set'}</Text>
+                    </View>
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -553,33 +544,11 @@ export default function ProfilePage() {
                 </View>
 
                 <View style={styles.inputGroup}>
-                    <Text style={[styles.inputLabel, validationErrors.gender && styles.errorLabel]}>
-                        Gender *
+                    <Text style={styles.inputLabel}>
+                        Gender
                     </Text>
-                    <View style={[
-                        styles.pickerContainer,
-                        validationErrors.gender && styles.errorInput
-                    ]}>
-                        <Picker
-                            selectedValue={selectedGender}
-                            onValueChange={(itemValue) => {
-                                setSelectedGender(itemValue);
-                                if (itemValue && itemValue.trim()) {
-                                    setValidationErrors(prev => ({ ...prev, gender: false }));
-                                }
-                            }}
-                            style={styles.picker}
-                            dropdownIconColor="#9CA3AF"
-                        >
-                            {genderOptions.map((option) => (
-                                <Picker.Item
-                                    key={option}
-                                    label={option}
-                                    value={option}
-                                    color="#fff"
-                                />
-                            ))}
-                        </Picker>
+                    <View style={[styles.input, styles.readOnlyInput]}>
+                        <Text style={styles.readOnlyText}>{selectedGender || 'Not set'}</Text>
                     </View>
                 </View>
 
@@ -589,7 +558,7 @@ export default function ProfilePage() {
                     disabled={isLoading}
                 >
                     <Text style={styles.submitButtonText}>
-                        {isLoading ? 'Saving Profile...' : 'Complete Profile & Continue'}
+                        {isLoading ? 'Saving Profile...' : 'Save Profile'}
                     </Text>
                 </TouchableOpacity>
             </View>
@@ -747,5 +716,37 @@ const styles = StyleSheet.create({
         fontSize: 12,
         marginTop: 4,
         textAlign: 'center',
+    },
+    // Header styles
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 20,
+        paddingTop: 10,
+    },
+    crossButton: {
+        padding: 8,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#fff',
+        textAlign: 'center',
+        flex: 1,
+    },
+    headerSpacer: {
+        width: 40, // Same width as cross button to center the title
+    },
+    // Read-only field styles
+    readOnlyInput: {
+        backgroundColor: '#374151',
+        opacity: 0.7,
+    },
+    readOnlyText: {
+        color: '#D1D5DB',
+        fontSize: 16,
     },
 });

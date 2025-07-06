@@ -101,6 +101,33 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         }
     };
 
+    const [progressBarWidth, setProgressBarWidth] = useState(0);
+    const [fullscreenProgressBarWidth, setFullscreenProgressBarWidth] = useState(0);
+
+    const handleProgressBarPress = (event: any) => {
+        if (duration > 0 && progressBarWidth > 0) {
+            const { locationX } = event.nativeEvent;
+            
+            // Calculate the touch position as a percentage
+            const touchPercentage = Math.max(0, Math.min(1, locationX / progressBarWidth));
+            const seekTime = touchPercentage * duration;
+            
+            handleSeek(seekTime);
+        }
+    };
+
+    const handleFullscreenProgressBarPress = (event: any) => {
+        if (duration > 0 && fullscreenProgressBarWidth > 0) {
+            const { locationX } = event.nativeEvent;
+            
+            // Calculate the touch position as a percentage
+            const touchPercentage = Math.max(0, Math.min(1, locationX / fullscreenProgressBarWidth));
+            const seekTime = touchPercentage * duration;
+            
+            handleSeek(seekTime);
+        }
+    };
+
     const handleForward = () => {
         const newPosition = Math.min(currentTime + 10, duration);
         handleSeek(newPosition);
@@ -368,7 +395,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                         {formatTime(currentTime)}
                                     </Text>
 
-                                    <View style={styles.progressBarContainer}>
+                                    <TouchableOpacity 
+                                        style={styles.progressBarContainer}
+                                        onPress={handleProgressBarPress}
+                                        activeOpacity={1}
+                                        onLayout={(event) => {
+                                            const { width } = event.nativeEvent.layout;
+                                            setProgressBarWidth(width);
+                                        }}
+                                    >
                                         {/* Background */}
                                         <View style={styles.progressBarBackground} />
                                         
@@ -395,7 +430,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                                 },
                                             ]}
                                         />
-                                    </View>
+                                        
+                                        {/* Progress indicator dot */}
+                                        <View
+                                            style={[
+                                                styles.progressIndicator,
+                                                {
+                                                    left: duration > 0
+                                                        ? `${(currentTime / duration) * 100}%`
+                                                        : '0%',
+                                                },
+                                            ]}
+                                        />
+                                    </TouchableOpacity>
 
                                     <Text style={styles.timeText}>
                                         {formatTime(duration)}
@@ -556,7 +603,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                         {formatTime(currentTime)}
                                     </Text>
 
-                                    <View style={styles.fullscreenProgressBarContainer}>
+                                    <TouchableOpacity 
+                                        style={styles.fullscreenProgressBarContainer}
+                                        onPress={handleFullscreenProgressBarPress}
+                                        activeOpacity={1}
+                                        onLayout={(event) => {
+                                            const { width } = event.nativeEvent.layout;
+                                            setFullscreenProgressBarWidth(width);
+                                        }}
+                                    >
                                         <View style={styles.progressBarBackground} />
                                         <View
                                             style={[
@@ -578,7 +633,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                                 },
                                             ]}
                                         />
-                                    </View>
+                                        
+                                        {/* Progress indicator dot for fullscreen */}
+                                        <View
+                                            style={[
+                                                styles.fullscreenProgressIndicator,
+                                                {
+                                                    left: duration > 0
+                                                        ? `${(currentTime / duration) * 100}%`
+                                                        : '0%',
+                                                },
+                                            ]}
+                                        />
+                                    </TouchableOpacity>
 
                                     <Text style={styles.fullscreenTimeText}>
                                         {formatTime(duration)}
@@ -674,11 +741,13 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     bufferProgressBar: {
+        position: 'absolute',
+        top: 8,
+        left: 0,
         height: 4,
-        backgroundColor: 'rgba(255, 255, 255, 0.3)',
+        backgroundColor: 'rgba(255, 255, 255, 0.5)',
         borderRadius: 2,
-        width: 200,
-        marginBottom: 8,
+        zIndex: 1,
     },
     bufferProgressFill: {
         height: '100%',
@@ -767,26 +836,39 @@ const styles = StyleSheet.create({
     },
     progressBarContainer: {
         flex: 1,
-        height: 4,
+        height: 20, // Increased height for better touch target
+        justifyContent: 'center',
         position: 'relative',
     },
     progressBarBackground: {
         position: 'absolute',
-        top: 0,
+        top: 8,
         left: 0,
         right: 0,
-        bottom: 0,
+        height: 4,
         backgroundColor: 'rgba(255, 255, 255, 0.3)',
         borderRadius: 2,
     },
     progressBarFill: {
         position: 'absolute',
-        top: 0,
+        top: 8,
         left: 0,
-        bottom: 0,
+        height: 4,
         backgroundColor: '#3B82F6',
         borderRadius: 2,
         zIndex: 2,
+    },
+    progressIndicator: {
+        position: 'absolute',
+        top: 2,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: '#3B82F6',
+        marginLeft: -6,
+        zIndex: 3,
+        borderWidth: 2,
+        borderColor: 'white',
     },
     muteButton: {
         width: 32,
@@ -900,9 +982,8 @@ const styles = StyleSheet.create({
     },
     fullscreenProgressBarContainer: {
         flex: 1,
-        height: 6,
-        backgroundColor: 'rgba(255, 255, 255, 0.3)',
-        borderRadius: 3,
+        height: 24, // Increased height for better touch target in fullscreen
+        justifyContent: 'center',
         marginHorizontal: 12,
         position: 'relative',
     },
@@ -911,6 +992,18 @@ const styles = StyleSheet.create({
         marginLeft: 12,
         backgroundColor: 'rgba(0, 0, 0, 0.6)',
         borderRadius: 20,
+    },
+    fullscreenProgressIndicator: {
+        position: 'absolute',
+        top: -3,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: '#3B82F6',
+        marginLeft: -6,
+        zIndex: 3,
+        borderWidth: 2,
+        borderColor: 'white',
     },
     
     // Playback speed styles
