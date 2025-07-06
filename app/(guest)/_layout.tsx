@@ -154,32 +154,25 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           }}
         />
         <View>
-          <Text style={{ fontSize: 20, fontWeight: "bold", color: "#fff" }}>
+          <Text style={{ fontSize: 20, fontWeight: "bold", color: "#fff", textAlign: "center" }}>
             Inside Inspiration Academy
           </Text>
         </View>
       </View>
       <View style={{ height: 40 }} />
 
-      <View style={{ flex: 1 }}>
-        <DrawerContentScrollView
-          {...props}
-          contentContainerStyle={{ paddingTop: 0, flexGrow: 1 }}
-          showsVerticalScrollIndicator={false}
-        >
+      <View style={{ flex: 1, justifyContent: 'space-between' }}>
+        <View style={{ flex: 1 }}>
           <DrawerItemList {...props} />
+        </View>
 
-          {/* Push content to bottom */}
-          <View style={{ flex: 1 }} />
-
-          {/* Guest Actions Section */}
-          <View
-            style={{
-              padding: 20,
-              backgroundColor: "#111827",
-              marginTop: 'auto',
-            }}
-          >
+        {/* Guest Actions Section */}
+        <View
+          style={{
+            padding: 20,
+            backgroundColor: "#111827",
+          }}
+        >
             {isLoggedIn ? (
               // Logged in user info
               <>
@@ -332,7 +325,6 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
               </>
             )}
           </View>
-        </DrawerContentScrollView>
       </View>
     </DrawerContentScrollView>
   );

@@ -13,6 +13,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import NotifService from '../NotifService';
 
 interface VideoUploadModalProps {
     visible: boolean;
@@ -213,6 +214,121 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
         }
     };
 
+    // Helper function to send notifications to enrolled students (using same logic as course-details.tsx)
+    const sendNotificationToEnrolledStudents = async (title: string, body: string, data: any = {}) => {
+        try {
+            // Fetch all users to check their enrolled_courses (same logic as course-details.tsx)
+            const { data: allUsers, error: fetchError } = await supabase
+                .from("users")
+                .select("id, name, email, phone_no, user_image, enrolled_courses, push_token, role");
+
+            if (fetchError) {
+                console.error("Error fetching users:", fetchError);
+                return 0;
+            }
+
+            if (!allUsers || allUsers.length === 0) {
+                console.log('No users found');
+                return 0;
+            }
+
+            const enrolledStudentsData: any[] = [];
+
+            allUsers.forEach(user => {
+                if (user.enrolled_courses && Array.isArray(user.enrolled_courses)) {
+                    // Check if the user has this course enrolled
+                    const enrollment = user.enrolled_courses.find((enrollment: any) => {
+                        // Handle both old format (string) and new format (object)
+                        if (typeof enrollment === 'string') {
+                            return enrollment === courseId;
+                        } else if (typeof enrollment === 'object' && enrollment.course_id) {
+                            return enrollment.course_id === courseId;
+                        }
+                        return false;
+                    });
+
+                    if (enrollment) {
+                        let status: 'success' | 'pending' = 'success';
+
+                        // Determine status from enrollment data
+                        if (typeof enrollment === 'object' && enrollment.status) {
+                            status = enrollment.status;
+                        }
+
+                        // Only include successfully enrolled students
+                        if (status === 'success') {
+                            enrolledStudentsData.push({
+                                id: user.id,
+                                name: user.name || 'Unknown',
+                                email: user.email || 'No email',
+                                phone_no: user.phone_no,
+                                user_image: user.user_image,
+                                push_token: user.push_token,
+                                role: user.role,
+                                status: status
+                            });
+                        }
+                    }
+                }
+            });
+
+            if (enrolledStudentsData.length === 0) {
+                console.log('No enrolled students found for course:', courseId);
+                return 0;
+            }
+
+            console.log(`Found ${enrolledStudentsData.length} enrolled students for notifications`);
+
+            // Filter users with push tokens and ensure they are students
+            const usersWithTokens = enrolledStudentsData.filter(user => 
+                user.push_token && (user.role === 'student' || !user.role) // Default to student if no role
+            );
+
+            if (usersWithTokens.length === 0) {
+                console.log('No students found with push tokens');
+                return 0;
+            }
+
+            console.log('Students with tokens after role filtering:', usersWithTokens.length);
+
+            const validPushTokens = usersWithTokens
+                .map(user => user.push_token)
+                .filter(token => token && (
+                    token.startsWith('ExponentPushToken[') || // Expo tokens
+                    (token.length > 50 && !token.includes(' ')) // FCM tokens
+                ));
+
+            if (validPushTokens.length === 0) {
+                console.log('No valid push tokens found for enrolled students');
+                return 0;
+            }
+
+            console.log(`Found ${validPushTokens.length} valid student push tokens`);
+
+            // Send push notifications to all enrolled students' devices
+            const pushResult = await NotifService.sendPushNotifications(
+                validPushTokens,
+                title,
+                body,
+                {
+                    courseId: courseId,
+                    ...data
+                }
+            );
+
+            if (pushResult) {
+                console.log(`✅ Push notifications sent to ${validPushTokens.length} student devices`);
+                return validPushTokens.length;
+            } else {
+                console.log('❌ Failed to send push notifications');
+                return 0;
+            }
+        } catch (error) {
+            console.error('Error sending notifications to enrolled students:', error);
+            return 0;
+        }
+    };
+
     const sanitizeFileName = (fileName: string): string => {
         // Remove or replace problematic characters
         const sanitized = fileName
@@ -379,6 +495,59 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
             }
 
             setUploadProgress(100);
+            
+            // Send notifications to enrolled students about new content
+            try {
+                // Get course information for better notification content
+                const { data: courseData, error: courseError } = await supabase
+                    .from('courses')
+                    .select('full_name, codename')
+                    .eq('id', courseId)
+                    .single();
+
+                if (!courseError && courseData) {
+                    // Create notification content based on what was uploaded
+                    const uploadedItems = [];
+                    if (videoFile) uploadedItems.push('Video');
+                    if (classNotes) uploadedItems.push('Class Notes');
+                    if (assignment) uploadedItems.push('Assignment');
+
+                    const resourcesText = uploadedItems.length > 1 
+                        ? uploadedItems.slice(0, -1).join(', ') + ' and ' + uploadedItems.slice(-1)
+                        : uploadedItems[0];
+
+                    const notificationTitle = `New Content Added - ${courseData.codename}`;
+                    const notificationBody = `${resourcesText} uploaded for "${videoTitle}". Check out the new resources!`;
+
+                    const notificationsSent = await sendNotificationToEnrolledStudents(
+                        notificationTitle,
+                        notificationBody,
+                        {
+                            type: 'new_video_content',
+                            videoId: videoId,
+                            videoTitle: videoTitle,
+                            courseName: courseData.full_name,
+                            courseCodename: courseData.codename,
+                            // Navigation data for Recorded tab in batch-details
+                            navigationTarget: 'batch-details',
+                            targetTab: 'recorded',
+                            targetCourseId: courseId,
+                            hasVideo: !!videoFile,
+                            hasNotes: !!classNotes,
+                            hasAssignment: !!assignment,
+                            uploadedAt: uploadTimestamp
+                        }
+                    );
+
+                    console.log(`Video upload notifications sent to ${notificationsSent} students`);
+                } else {
+                    console.error('Could not fetch course data for notifications:', courseError);
+                }
+            } catch (notificationError) {
+                console.error('Error sending upload notifications:', notificationError);
+                // Don't fail the upload if notifications fail
+            }
+
             Alert.alert('Success', 'Video and related files uploaded successfully!');
             onSuccess();
             handleClose();

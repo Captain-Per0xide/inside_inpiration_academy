@@ -390,7 +390,7 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           style={{ width: 100, height: 100, marginBottom: 10, backgroundColor: '#fff', borderRadius: 50 }}
         />
         <View>
-          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff' }}>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#fff', textAlign: 'center' }}>
             Inside Inspiration Academy
           </Text>
         </View>

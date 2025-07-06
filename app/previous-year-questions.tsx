@@ -647,10 +647,10 @@ const PreviousYearQuestionsPage = () => {
 const styles = {
     container: {
         flex: 1,
-        backgroundColor: '#F9FAFB',
+        backgroundColor: '#0F172A',
     },
     header: {
-        backgroundColor: '#2E4064',
+        backgroundColor: '#1E293B',
         paddingTop: 50,
         paddingHorizontal: 20,
         paddingBottom: 20,
@@ -661,7 +661,7 @@ const styles = {
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         justifyContent: 'center' as const,
         alignItems: 'center' as const,
         marginRight: 16,
@@ -670,18 +670,18 @@ const styles = {
         flex: 1,
     },
     headerTitle: {
-        color: '#fff',
+        color: '#F8FAFC',
         fontWeight: 'bold' as const,
     },
     headerSubtitle: {
-        color: 'rgba(255, 255, 255, 0.8)',
+        color: 'rgba(248, 250, 252, 0.7)',
         marginTop: 4,
     },
     tabContainer: {
         flexDirection: 'row' as const,
-        backgroundColor: '#fff',
+        backgroundColor: '#1E293B',
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
+        borderBottomColor: '#334155',
     },
     tab: {
         flex: 1,
@@ -691,14 +691,14 @@ const styles = {
         borderBottomColor: 'transparent',
     },
     activeTab: {
-        borderBottomColor: '#2E4064',
+        borderBottomColor: '#EF4444',
     },
     tabText: {
-        color: '#6B7280',
+        color: '#94A3B8',
         fontWeight: '500' as const,
     },
     activeTabText: {
-        color: '#2E4064',
+        color: '#EF4444',
         fontWeight: 'bold' as const,
     },
     content: {
@@ -718,7 +718,7 @@ const styles = {
     },
     loadingText: {
         marginTop: 16,
-        color: '#6B7280',
+        color: '#94A3B8',
     },
     emptyContainer: {
         flex: 1,
@@ -728,12 +728,12 @@ const styles = {
     },
     emptyTitle: {
         fontWeight: 'bold' as const,
-        color: '#374151',
+        color: '#F8FAFC',
         marginTop: 16,
         marginBottom: 8,
     },
     emptyDescription: {
-        color: '#6B7280',
+        color: '#94A3B8',
         textAlign: 'center' as const,
         paddingHorizontal: 20,
     },
@@ -741,14 +741,16 @@ const styles = {
         gap: 16,
     },
     questionCard: {
-        backgroundColor: '#fff',
+        backgroundColor: '#1E293B',
         borderRadius: 12,
         padding: 20,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.3,
         shadowRadius: 4,
         elevation: 3,
+        borderWidth: 1,
+        borderColor: '#334155',
     },
     questionHeader: {
         flexDirection: 'row' as const,
@@ -770,7 +772,7 @@ const styles = {
     },
     questionTitle: {
         fontWeight: 'bold' as const,
-        color: '#374151',
+        color: '#F8FAFC',
         marginBottom: 8,
     },
     yearBadge: {
@@ -796,10 +798,10 @@ const styles = {
         gap: 4,
     },
     metaText: {
-        color: '#6B7280',
+        color: '#94A3B8',
     },
     downloadButton: {
-        backgroundColor: '#2E4064',
+        backgroundColor: '#EF4444',
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
@@ -812,7 +814,7 @@ const styles = {
         fontWeight: '600' as const,
     },
     addButton: {
-        backgroundColor: '#2E4064',
+        backgroundColor: '#EF4444',
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
@@ -830,36 +832,38 @@ const styles = {
     },
     sectionTitle: {
         fontWeight: 'bold' as const,
-        color: '#374151',
+        color: '#F8FAFC',
         marginBottom: 16,
     },
     manageCard: {
-        backgroundColor: '#fff',
+        backgroundColor: '#1E293B',
         borderRadius: 8,
         padding: 16,
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.3,
         shadowRadius: 2,
         elevation: 2,
+        borderWidth: 1,
+        borderColor: '#334155',
     },
     manageInfo: {
         flex: 1,
     },
     manageTitle: {
         fontWeight: '600' as const,
-        color: '#374151',
+        color: '#F8FAFC',
         marginBottom: 2,
     },
     manageYear: {
-        color: '#DC2626',
+        color: '#EF4444',
         fontWeight: '500' as const,
         marginBottom: 4,
     },
     manageDate: {
-        color: '#6B7280',
+        color: '#94A3B8',
     },
     manageActions: {
         flexDirection: 'row' as const,
@@ -883,15 +887,17 @@ const styles = {
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
         justifyContent: 'center' as const,
         alignItems: 'center' as const,
         padding: 20,
     },
     modalContent: {
-        backgroundColor: '#fff',
+        backgroundColor: '#1E293B',
         borderRadius: 16,
         maxHeight: '80%' as const,
+        borderWidth: 1,
+        borderColor: '#334155',
     },
     modalHeader: {
         flexDirection: 'row' as const,
@@ -899,17 +905,17 @@ const styles = {
         alignItems: 'center' as const,
         padding: 20,
         borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
+        borderBottomColor: '#334155',
     },
     modalTitle: {
         fontWeight: 'bold' as const,
-        color: '#374151',
+        color: '#F8FAFC',
     },
     modalCloseButton: {
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: '#F3F4F6',
+        backgroundColor: '#374151',
         justifyContent: 'center' as const,
         alignItems: 'center' as const,
     },
@@ -921,34 +927,35 @@ const styles = {
     },
     inputLabel: {
         fontWeight: '600' as const,
-        color: '#374151',
+        color: '#F8FAFC',
         marginBottom: 8,
     },
     textInput: {
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: '#475569',
         borderRadius: 8,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#fff',
+        backgroundColor: '#0F172A',
+        color: '#F8FAFC',
     },
     filePickerButton: {
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: '#475569',
         borderRadius: 8,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#fff',
+        backgroundColor: '#0F172A',
         flexDirection: 'row' as const,
         alignItems: 'center' as const,
         gap: 8,
     },
     fileSelectedButton: {
         borderColor: '#10B981',
-        backgroundColor: '#F0FDF4',
+        backgroundColor: '#064E3B',
     },
     filePickerText: {
-        color: '#6B7280',
+        color: '#94A3B8',
         flex: 1,
     },
     fileSelectedText: {
@@ -959,7 +966,7 @@ const styles = {
         flexDirection: 'row' as const,
         padding: 20,
         borderTopWidth: 1,
-        borderTopColor: '#E5E7EB',
+        borderTopColor: '#334155',
         gap: 12,
     },
     cancelButton: {
@@ -967,18 +974,19 @@ const styles = {
         paddingVertical: 12,
         borderRadius: 8,
         borderWidth: 1,
-        borderColor: '#D1D5DB',
+        borderColor: '#475569',
         alignItems: 'center' as const,
+        backgroundColor: '#374151',
     },
     cancelButtonText: {
-        color: '#6B7280',
+        color: '#94A3B8',
         fontWeight: '600' as const,
     },
     saveButton: {
         flex: 1,
         paddingVertical: 12,
         borderRadius: 8,
-        backgroundColor: '#2E4064',
+        backgroundColor: '#EF4444',
         alignItems: 'center' as const,
     },
     saveButtonText: {

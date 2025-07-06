@@ -1,8 +1,9 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Text, View } from 'react-native';
 import 'react-native-reanimated';
 import tw from 'twrnc';
@@ -53,6 +54,63 @@ export default function RootLayout() {
   const [loaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
   });
+
+  // Handle notification responses (when user taps on notification)
+  useEffect(() => {
+    const handleNotificationResponse = (response: Notifications.NotificationResponse) => {
+      console.log('Notification tapped:', response);
+      
+      const data = response.notification.request.content.data;
+      console.log('Notification data:', data);
+
+      // Handle navigation based on notification data
+      if (data?.navigationTarget && data?.targetCourseId) {
+        try {
+          switch (data.navigationTarget) {
+            case 'batch-details':
+              const params: { [key: string]: string } = { courseId: data.targetCourseId as string };
+              
+              // Add tab parameter if specified
+              if (data.targetTab) {
+                params.tab = data.targetTab as string;
+              }
+              
+              // Add course name if available
+              if (data.courseName) {
+                params.courseName = data.courseName as string;
+              }
+              
+              console.log('Navigating to batch-details with params:', params);
+              router.push({
+                pathname: '/batch-details',
+                params: params
+              });
+              break;
+              
+            case 'course-details':
+              router.push({
+                pathname: '/course-details',
+                params: { courseId: data.targetCourseId as string }
+              });
+              break;
+              
+            default:
+              console.log('Unknown navigation target:', data.navigationTarget);
+          }
+        } catch (error) {
+          console.error('Error handling notification navigation:', error);
+        }
+      }
+    };
+
+    // Listen for notification responses
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
+
+    // Cleanup
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   if (!loaded) {
     // Async font loading only occurs in development.

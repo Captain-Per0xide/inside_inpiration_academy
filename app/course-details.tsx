@@ -845,7 +845,12 @@ const CourseDetailsPage = () => {
                   courseName: course.codename,
                   classId: newScheduledClass.id,
                   scheduledDateTime: scheduledDateTime.toISOString(),
-                  type: 'class_scheduled'
+                  type: 'class_scheduled',
+                  // Navigation data for when notification is tapped
+                  navigationTarget: 'batch-details',
+                  targetCourseId: course.id,
+                  courseFullName: course.full_name,
+                  courseCodename: course.codename
                 }
               );
 
@@ -930,8 +935,88 @@ const CourseDetailsPage = () => {
     }
   };
 
+  // Helper function to send notifications to enrolled students
+  const sendNotificationToEnrolledStudents = async (title: string, body: string, data: any = {}) => {
+    try {
+      const enrolledStudentsWithSuccessStatus = enrolledStudents.filter(
+        student => student.status === 'success'
+      );
+
+      if (enrolledStudentsWithSuccessStatus.length === 0) {
+        console.log('No enrolled students to notify');
+        return 0;
+      }
+
+      console.log(`Fetching push tokens for ${enrolledStudentsWithSuccessStatus.length} enrolled students...`);
+
+      // Get push tokens for enrolled students with explicit role filtering
+      const { data: usersWithTokens, error: tokenError } = await supabase
+        .from('users')
+        .select('id, name, push_token, role')
+        .in('id', enrolledStudentsWithSuccessStatus.map(student => student.id))
+        .not('push_token', 'is', null);
+
+      if (tokenError) {
+        console.error('Error fetching user push tokens:', tokenError);
+        return 0;
+      }
+
+      if (!usersWithTokens || usersWithTokens.length === 0) {
+        console.log('No students found with push tokens');
+        return 0;
+      }
+
+      // Double-check that we only notify students (role = 'student' or null/undefined = default student)
+      const studentUsersWithTokens = usersWithTokens.filter(user => 
+        user.role === 'student' || !user.role // Default to student if no role
+      );
+
+      console.log('Students with tokens after role filtering:', studentUsersWithTokens.length);
+
+      const validPushTokens = studentUsersWithTokens
+        .map(user => user.push_token)
+        .filter(token => token && (
+          token.startsWith('ExponentPushToken[') || // Expo tokens
+          (token.length > 50 && !token.includes(' ')) // FCM tokens (long strings without spaces)
+        ));
+
+      if (validPushTokens.length === 0) {
+        console.log('No valid push tokens found for enrolled students');
+        return 0;
+      }
+
+      console.log(`Found ${validPushTokens.length} valid student push tokens`);
+
+      // Send push notifications to all enrolled students' devices
+      const pushResult = await NotifService.sendPushNotifications(
+        validPushTokens,
+        title,
+        body,
+        {
+          courseId: course?.id,
+          courseName: course?.codename,
+          ...data
+        }
+      );
+
+      if (pushResult) {
+        console.log(`✅ Push notifications sent to ${validPushTokens.length} student devices`);
+        return validPushTokens.length;
+      } else {
+        console.log('❌ Failed to send push notifications');
+        return 0;
+      }
+    } catch (error) {
+      console.error('Error sending notifications to enrolled students:', error);
+      return 0;
+    }
+  };
+
   const handleDeleteScheduledClass = async (classId: string) => {
     try {
+      // Find the class to delete for notification details
+      const classToDelete = scheduledClasses.find(cls => cls.id === classId);
+      
       // Filter out the class to delete
       const updatedClasses = scheduledClasses.filter(cls => cls.id !== classId);
 
@@ -949,6 +1034,36 @@ const CourseDetailsPage = () => {
 
       // Update local state
       setScheduledClasses(updatedClasses);
+
+      // Send notification to enrolled students about class cancellation
+      if (classToDelete && course) {
+        const scheduledDateTime = new Date(classToDelete.scheduledDateTime);
+        const notificationTitle = `Class Cancelled - ${course.codename}`;
+        const notificationBody = `The scheduled class "${classToDelete.topic}" for ${scheduledDateTime.toLocaleDateString()} at ${scheduledDateTime.toLocaleTimeString()} has been cancelled.`;
+        
+        try {
+          const notificationsSent = await sendNotificationToEnrolledStudents(
+            notificationTitle,
+            notificationBody,
+            {
+              classId: classToDelete.id,
+              scheduledDateTime: classToDelete.scheduledDateTime,
+              type: 'class_cancelled',
+              topic: classToDelete.topic,
+              // Navigation data for when notification is tapped
+              navigationTarget: 'batch-details',
+              targetCourseId: course.id,
+              courseName: course.full_name,
+              courseCodename: course.codename
+            }
+          );
+          
+          console.log(`Class cancellation notifications sent to ${notificationsSent} students`);
+        } catch (notificationError) {
+          console.error('Error sending cancellation notifications:', notificationError);
+        }
+      }
+
       Alert.alert('Success', 'Scheduled class deleted successfully');
     } catch (error) {
       console.error('Error:', error);
@@ -989,6 +1104,50 @@ const CourseDetailsPage = () => {
       setScheduledClasses(updatedClasses);
 
       const targetClass = updatedClasses.find(cls => cls.id === classId);
+
+      // Send notifications to enrolled students based on status change
+      if (currentClass && targetClass && course) {
+        try {
+          let notificationTitle = '';
+          let notificationBody = '';
+          let notificationType = '';
+
+          if (currentClass.status === 'scheduled' && targetClass.status === 'live') {
+            // Class started
+            notificationTitle = `Class Started - ${course.codename}`;
+            notificationBody = `The class "${currentClass.topic}" has started! Join now: ${currentClass.meetingLink}`;
+            notificationType = 'class_started';
+          } else if (currentClass.status === 'live' && targetClass.status === 'ended') {
+            // Class ended
+            notificationTitle = `Class Ended - ${course.codename}`;
+            notificationBody = `The class "${currentClass.topic}" has ended. Thank you for attending!`;
+            notificationType = 'class_ended';
+          }
+
+          if (notificationTitle && notificationBody) {
+            const notificationsSent = await sendNotificationToEnrolledStudents(
+              notificationTitle,
+              notificationBody,
+              {
+                classId: currentClass.id,
+                scheduledDateTime: currentClass.scheduledDateTime,
+                type: notificationType,
+                topic: currentClass.topic,
+                meetingLink: currentClass.meetingLink,
+                // Navigation data for when notification is tapped
+                navigationTarget: 'batch-details',
+                targetCourseId: course.id,
+                courseName: course.full_name,
+                courseCodename: course.codename
+              }
+            );
+            
+            console.log(`Class status notifications sent to ${notificationsSent} students`);
+          }
+        } catch (notificationError) {
+          console.error('Error sending class status notifications:', notificationError);
+        }
+      }
 
       // If starting a class, redirect to meeting link
       if (currentClass?.status === 'scheduled' && targetClass?.status === 'live') {

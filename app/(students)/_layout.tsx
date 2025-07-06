@@ -122,25 +122,21 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
           style={{ width: 100, height: 100, marginBottom: 10, backgroundColor: '#fff', borderRadius: 50 }}
         />
         <View>
-          <Text style={{ fontSize: 20, fontWeight: 'bold', color: 'white' }}>Inside Inspiration Academy</Text>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: 'white', textAlign: 'center' }}>Inside Inspiration Academy</Text>
         </View>
       </View>
       <View style={{ height: 40 }} />
 
-      <View style={{ flex: 1 }}>
-        <DrawerContentScrollView
-          {...props}
-          contentContainerStyle={{ paddingTop: 0, flexGrow: 1 }}
-          showsVerticalScrollIndicator={false}
-        >
+      <View style={{ flex: 1, justifyContent: 'space-between' }}>
+        <View style={{ flex: 1 }}>
           <DrawerItemList {...props} />
-          <View style={{ height: 40 }} />
-          <View style={{
-            padding: 20,
-            borderTopWidth: 1,
-            backgroundColor: '#111827',
-            borderRadius: 8
-          }}>
+        </View>
+
+        <View style={{
+          padding: 20,
+          backgroundColor: '#111827',
+          borderRadius: 8
+        }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
               {userData.user_image ? (
                 <Image
@@ -211,7 +207,6 @@ function CustomDrawerContent(props: DrawerContentComponentProps) {
               </Text>
             </TouchableOpacity>
           </View>
-        </DrawerContentScrollView>
       </View>
     </DrawerContentScrollView>
   );

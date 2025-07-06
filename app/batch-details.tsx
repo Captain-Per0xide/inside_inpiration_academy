@@ -89,8 +89,9 @@ interface RecordedVideo {
 }
 
 const BatchDetailsScreen = () => {
-    const { courseId } = useLocalSearchParams<{
+    const { courseId, tab } = useLocalSearchParams<{
         courseId: string;
+        tab?: string;
     }>();
 
     const [course, setCourse] = useState<Course | null>(null);
@@ -101,6 +102,13 @@ const BatchDetailsScreen = () => {
     const [refreshing, setRefreshing] = useState(false);
     const [screenData, setScreenData] = useState(Dimensions.get('window'));
     const [activeTab, setActiveTab] = useState<'classes' | 'recorded' | 'materials'>('classes');
+    
+    // Handle tab parameter from navigation
+    useEffect(() => {
+        if (tab && ['classes', 'recorded', 'materials'].includes(tab)) {
+            setActiveTab(tab as 'classes' | 'recorded' | 'materials');
+        }
+    }, [tab]);
     const [sortOrder, setSortOrder] = useState<'oldest' | 'newest'>('oldest');
     const [selectedPDF, setSelectedPDF] = useState<{ url: string; title: string; type: 'notes' | 'assignment' } | null>(null);
     const [selectedVideo, setSelectedVideo] = useState<RecordedVideo | null>(null);
